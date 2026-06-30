@@ -7,7 +7,6 @@ import requests
 import pandas as pd
 import numpy as np
 import json
-import os
 import time
 from datetime import datetime
 import pytz
@@ -18,10 +17,17 @@ LAST_SIGNAL_FILE = "/root/tradingbot/last_signals_smc.json"
 
 ALL_PAIRS = {
     "XAU/USD": "GC=F",
+    "Silver/USD": "SI=F",
+    "Oil/USD": "CL=F",
     "BTC/USD": "BTC-USD",
     "SOL/USD": "SOL-USD",
     "EUR/USD": "EURUSD=X",
     "GBP/USD": "GBPUSD=X",
+    "USD/CHF": "USDCHF=X",
+    "AUD/USD": "AUDUSD=X",
+    "USD/CAD": "USDCAD=X",
+    "NZD/USD": "NZDUSD=X",
+    "USD/JPY": "USDJPY=X",
 }
 
 CRYPTO_PAIRS = ["BTC/USD", "SOL/USD"]
@@ -34,6 +40,7 @@ PAIR_EMOJIS = {
     "Silver/USD": "\U0001f948", "Copper/USD": "\U0001f7e0",
     "Oil/USD": "\u26fd", "BTC/USD": "\U0001f7e1",
     "SOL/USD": "\U0001f535", "DXY": "\U0001f4b5",
+    "USD/JPY": "\U0001f1ef\U0001f1f5",
 }
 
 
@@ -204,7 +211,7 @@ def find_poi(df, name):
     if fvg_bull_zone and fvg_bull_zone[0] <= price <= fvg_bull_zone[1]:
         bull_score += 1
         bull_reasons.append("Price in FVG zone")
-    if 40 < rsi < 65:
+    if 50 < rsi < 70:
         bull_score += 1
         bull_reasons.append("RSI in bullish zone")
     if is_bull_body:
@@ -229,7 +236,7 @@ def find_poi(df, name):
     if fvg_bear_zone and fvg_bear_zone[0] <= price <= fvg_bear_zone[1]:
         bear_score += 1
         bear_reasons.append("Price in FVG zone")
-    if 35 < rsi < 60:
+    if 30 < rsi < 50:
         bear_score += 1
         bear_reasons.append("RSI in bearish zone")
     if is_bear_body:
@@ -303,13 +310,84 @@ def add_trade(name, poi):
         with open(trades_file) as f:
             trades = json.load(f)
     signal = "BUY" if poi["bias"] == "BULLISH" else "SELL"
-    trades.append({"name": name, "signal": signal, "entry": poi["price"], "sl": poi["sl"], "tp": poi["tp"], "time": time.time()})
+    trades.append({"name": name, "signal": signal, "entry": poi["price"], "sl": poi["sl"], "tp": poi["tp"], "atr": poi["atr"], "time": time.time()})
     with open(trades_file, "w") as f:
         json.dump(trades, f)
+
+PAIR_CURRENCIES = {
+    "XAU/USD": ["USD"], "Silver/USD": ["USD"], "Oil/USD": ["USD"],
+    "BTC/USD": ["USD"], "SOL/USD": ["USD"],
+    "EUR/USD": ["EUR", "USD"], "GBP/USD": ["GBP", "USD"],
+    "USD/CHF": ["USD", "CHF"], "AUD/USD": ["AUD", "USD"],
+    "USD/CAD": ["USD", "CAD"], "NZD/USD": ["NZD", "USD"],
+    "USD/JPY": ["USD", "JPY"],
+}
+
+def get_news_blocked_currencies():
+    """Returns set of currency codes with high-impact events within ±30 minutes."""
+    try:
+        from bs4 import BeautifulSoup
+        tz = pytz.timezone("Europe/Athens")
+        now = datetime.now(tz)
+        today = now.strftime("%Y-%m-%d")
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "X-Requested-With": "XMLHttpRequest",
+            "Referer": "https://www.investing.com/economic-calendar/"
+        }
+        payload = {"dateFrom": today, "dateTo": today, "importance[]": ["3"]}
+        r = requests.post(
+            "https://www.investing.com/economic-calendar/Service/getCalendarFilteredData",
+            headers=headers, data=payload, timeout=10
+        )
+        soup = BeautifulSoup(r.json().get("data", ""), "html.parser")
+        blocked = set()
+        for row in soup.find_all("tr", id=lambda x: x and x.startswith("eventRowId_")):
+            try:
+                time_td = row.find("td", class_="first")
+                currency_td = row.find("td", class_="flagCur")
+                if not time_td or not currency_td:
+                    continue
+                event_time_str = time_td.text.strip()
+                currency = currency_td.text.strip()
+                event_dt = tz.localize(datetime.strptime(today + " " + event_time_str, "%Y-%m-%d %H:%M"))
+                delta_min = (event_dt - now).total_seconds() / 60
+                if -15 <= delta_min <= 30:
+                    blocked.add(currency)
+            except Exception:
+                continue
+        if blocked:
+            print(f"News filter blocking currencies: {blocked}")
+        return blocked
+    except Exception as e:
+        print(f"News filter error: {e}")
+        return set()
+
+def get_min_score(name):
+    """Returns required score threshold based on recent win rate for this pair."""
+    journal_file = "/root/tradingbot/journal.json"
+    try:
+        if not os.path.exists(journal_file):
+            return 5
+        with open(journal_file) as f:
+            entries = json.load(f)
+        pair_entries = [e for e in entries if e.get("pair") == name][-20:]
+        if len(pair_entries) < 10:
+            return 5
+        wins = sum(1 for e in pair_entries if e.get("result") == "WIN")
+        win_rate = wins / len(pair_entries)
+        if win_rate < 0.40:
+            print(f"Low win rate {round(win_rate*100)}% for {name} — raising threshold to 6")
+            return 6
+        return 5
+    except Exception as e:
+        print(f"Score threshold error: {e}")
+        return 5
 
 def main():
     print("POI Strategy started (1H timeframe)...")
     last_signals = load_last_signals()
+    news_cache = {"time": 0, "blocked": set()}
 
     while True:
         try:
@@ -323,6 +401,11 @@ def main():
             best_score = 0
             best_name = ""
 
+            # Refresh news filter once per hour
+            if now_time - news_cache["time"] > 3600:
+                news_cache["blocked"] = get_news_blocked_currencies()
+                news_cache["time"] = now_time
+
             # Load open trades to prevent conflicts
             open_trades_file = "/root/tradingbot/open_trades.json"
             open_trades = []
@@ -333,8 +416,13 @@ def main():
 
             for name, symbol in ALL_PAIRS.items():
                 try:
-                    # Skip if already have open trade for this pair
                     if name in open_pairs:
+                        continue
+
+                    # News filter: skip if any currency in this pair has upcoming high-impact event
+                    pair_ccys = PAIR_CURRENCIES.get(name, [])
+                    if news_cache["blocked"] & set(pair_ccys):
+                        print(f"Skipping {name} — news filter active")
                         continue
 
                     last_sig = last_signals.get(name, {})
@@ -343,9 +431,7 @@ def main():
                         continue
                     last_dir = last_sig.get("signal", "")
 
-                    # HTF 4H confirmation
                     trend_4h = get_trend_4h(symbol)
-
                     df = get_data(symbol)
                     poi = find_poi(df, name)
 
@@ -353,23 +439,27 @@ def main():
                         signal = "BUY" if poi["bias"] == "BULLISH" else "SELL"
                         if last_dir and signal == last_dir:
                             continue
-                        # HTF filter: skip if 4H trend disagrees
                         if trend_4h and signal == "BUY" and trend_4h != "BULL":
                             continue
                         if trend_4h and signal == "SELL" and trend_4h != "BEAR":
                             continue
-                        # LTF 15m confirmation: skip if 15m contradicts entry direction
                         trend_15m = get_trend_15m(symbol)
                         if trend_15m and signal == "BUY" and trend_15m == "BEAR":
                             continue
                         if trend_15m and signal == "SELL" and trend_15m == "BULL":
                             continue
+
+                        # Performance-adjusted score threshold
+                        min_score = get_min_score(name)
+                        if poi["score"] < min_score:
+                            continue
+
                         if poi["score"] > best_score:
                             best_score = poi["score"]
                             best_poi = poi
                             best_name = name
                 except Exception as e:
-                    print("Error "+name+": "+str(e))
+                    print(f"Error {name}: {e}")
 
             if best_poi:
                 msg = format_poi(best_name, best_poi)
@@ -378,12 +468,12 @@ def main():
                 last_signals[best_name] = {"time": now_time, "signal": signal}
                 save_last_signals(last_signals)
                 add_trade(best_name, best_poi)
-                print("POI sent: "+best_name+" "+best_poi["bias"]+" score:"+str(best_score))
+                print(f"POI sent: {best_name} {best_poi['bias']} score:{best_score}")
             else:
                 print("Scan complete - no POI found")
 
         except Exception as e:
-            print("Main error: "+str(e))
+            print(f"Main error: {e}")
 
         time.sleep(3600)
 

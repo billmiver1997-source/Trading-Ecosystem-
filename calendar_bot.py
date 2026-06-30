@@ -4,7 +4,6 @@ load_dotenv("/root/tradingbot/.env")
 
 import requests
 import json
-import os
 import time
 import anthropic
 from datetime import datetime
@@ -26,8 +25,8 @@ def send_channel(msg):
     try:
         requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
             json={"chat_id": CHANNEL_ID, "text": msg[:4000]})
-    except:
-        pass
+    except Exception as e:
+        print(f"send_channel error: {e}")
 
 
 def get_calendar():
@@ -37,10 +36,8 @@ def get_calendar():
             "X-Requested-With": "XMLHttpRequest",
             "Referer": "https://www.investing.com/economic-calendar/"
         }
-        from datetime import datetime as dt2
-        import pytz as tz2
-        tz_athens = tz2.timezone("Europe/Athens")
-        today = dt2.now(tz_athens).strftime("%Y-%m-%d")
+        tz_athens = pytz.timezone("Europe/Athens")
+        today = datetime.now(tz_athens).strftime("%Y-%m-%d")
         payload = {"dateFrom": today, "dateTo": today, "importance[]": ["2", "3"]}
         r = requests.post("https://www.investing.com/economic-calendar/Service/getCalendarFilteredData", headers=headers, data=payload, timeout=15)
         data = r.json()
@@ -82,7 +79,8 @@ def get_calendar():
                     "impact": impact_emoji,
                     "bulls": impact_bulls
                 })
-            except:
+            except Exception as e:
+                print(f"Calendar row parse error: {e}")
                 continue
         return events
     except Exception as e:

@@ -5,7 +5,6 @@ load_dotenv("/root/tradingbot/.env")
 import yfinance as yf
 import requests
 import json
-import os
 import time
 from datetime import datetime
 import pytz
@@ -69,7 +68,7 @@ def load_stats():
     if os.path.exists(STATS_FILE):
         with open(STATS_FILE) as f:
             return json.load(f)
-    return {"wins": 0, "losses": 0, "total_pips": 0.0}
+    return {"wins": 0, "losses": 0, "total_pips": 0.0, "by_pair": {}}
 
 def save_stats(stats):
     with open(STATS_FILE, "w") as f:
@@ -81,8 +80,8 @@ def send_all(msg):
             requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
                 json={"chat_id": chat_id, "text": msg[:4000]})
             time.sleep(0.1)
-        except:
-            pass
+        except Exception as e:
+            print(f"send_all error: {e}")
 
 def get_price(symbol):
     try:
@@ -90,8 +89,8 @@ def get_price(symbol):
         df = ticker.history(period="1d", interval="1m")
         if len(df) > 0:
             return float(df["Close"].iloc[-1])
-    except:
-        pass
+    except Exception as e:
+        print(f"get_price error {symbol}: {e}")
     return None
 
 def add_trade(name, signal, entry, sl, tp):
@@ -136,10 +135,35 @@ def check_trades():
         tp_hit = (signal == "BUY" and price >= tp) or (signal == "SELL" and price <= tp)
         sl_hit = (signal == "BUY" and price <= sl) or (signal == "SELL" and price >= sl)
 
+        # Trailing SL: move to breakeven when price covers 50% to TP
+        atr = trade.get("atr", 0)
+        if atr and not tp_hit and not sl_hit:
+            half_move = abs(tp - entry) * 0.5
+            if signal == "BUY" and price >= entry + half_move and sl < entry:
+                trade["sl"] = round(entry, 5)
+                print(f"Breakeven set for {name} BUY @ {entry}")
+                send_all(
+                    f"\U0001f6e1 BREAKEVEN SET\n\n{emoji} {name}\n"
+                    f"Trade moved to breakeven @ {round(entry,5)}\n"
+                    f"Current price: {round(price,5)}"
+                )
+            elif signal == "SELL" and price <= entry - half_move and sl > entry:
+                trade["sl"] = round(entry, 5)
+                print(f"Breakeven set for {name} SELL @ {entry}")
+                send_all(
+                    f"\U0001f6e1 BREAKEVEN SET\n\n{emoji} {name}\n"
+                    f"Trade moved to breakeven @ {round(entry,5)}\n"
+                    f"Current price: {round(price,5)}"
+                )
+
         if tp_hit:
             pips = abs(tp - entry)
             stats["wins"] += 1
             stats["total_pips"] += pips
+            if "by_pair" not in stats:
+                stats["by_pair"] = {}
+            pair_s = stats["by_pair"].setdefault(name, {"wins": 0, "losses": 0})
+            pair_s["wins"] += 1
             save_stats(stats)
             total = stats["wins"] + stats["losses"]
             winrate = round((stats["wins"] / total) * 100, 1) if total > 0 else 0
@@ -166,6 +190,10 @@ def check_trades():
             pips = abs(sl - entry)
             stats["losses"] += 1
             stats["total_pips"] -= pips
+            if "by_pair" not in stats:
+                stats["by_pair"] = {}
+            pair_s = stats["by_pair"].setdefault(name, {"wins": 0, "losses": 0})
+            pair_s["losses"] += 1
             save_stats(stats)
             total = stats["wins"] + stats["losses"]
             winrate = round((stats["wins"] / total) * 100, 1) if total > 0 else 0

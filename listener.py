@@ -33,7 +33,7 @@ ALIASES = {
     "audusd": "AUD/USD", "usdcad": "USD/CAD", "nzdusd": "NZD/USD",
     "eurchf": "EUR/CHF", "gbp": "GBP/USD", "eur": "EUR/USD",
     "xau": "XAU/USD", "btcusd": "BTC/USD", "solusd": "SOL/USD",
-    "usdjpy": "USD/JPY", "jpy": "USD/JPY", "usdchf": "USD/CHF",
+    "usdjpy": "USD/JPY", "jpy": "USD/JPY",
     "🇯🇵 usd/jpy": "USD/JPY", "🇳🇿 nzd/usd": "NZD/USD",
     "chf": "USD/CHF"
 }
