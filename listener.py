@@ -98,6 +98,8 @@ def main_menu():
             [{"text": "🧮 Risk Calculator"}, {"text": "💥 Volatility Alert"}],
             [{"text": "💼 Portfolio"}, {"text": "📓 Trade Journal"}],
         [{"text": "📜 Signal History"}, {"text": "📍 S&R Levels"}],
+        [{"text": "🔗 Links"}, {"text": "💰 IB Tracker"}],
+        [{"text": "🧮 Commission Calc"}],
         ],
         "resize_keyboard": True,
         "one_time_keyboard": True,
@@ -228,6 +230,7 @@ def handle_message(chat_id, text, username):
             users.append(str(chat_id))
             save_users(users)
         send_message(chat_id, WELCOME, main_menu())
+        send_message(chat_id, "⚡ Quick actions:", inline_main_menu())
 
 
     elif text_lower in ["/menu", "\U0001f519 back to menu"]:
