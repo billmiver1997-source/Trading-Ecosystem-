@@ -185,13 +185,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif text == "\U0001f4da Education":
         edu_caption = "TMGM Academy - Access world-class trading education."
-        with open("/opt/tradingbot/tmgm_logo.png", "rb") as photo:
-            await context.bot.send_photo(chat_id=update.effective_chat.id, photo=photo, caption=edu_caption, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("TMGM Academy", url="https://www.tmgm.com/en/academy/overview")]]))
+        try:
+            with open("/root/tradingbot/tmgm_logo.png", "rb") as photo:
+                await context.bot.send_photo(chat_id=update.effective_chat.id, photo=photo, caption=edu_caption, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("TMGM Academy", url="https://www.tmgm.com/en/academy/overview")]]))
+        except Exception:
+            await update.message.reply_text(edu_caption, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("TMGM Academy", url="https://www.tmgm.com/en/academy/overview")]]))
         await update.message.reply_text("Choose a topic:", reply_markup=edu_menu())
     elif text == "\U0001f4b9 Brokers":
         msg = ("💹 TMGM | Trade. Markets. Growth. Mastery.\n\nTMGM is an institutional-grade broker offering world-class trading conditions.\n\n📌 Key Features:\n- 12,000+ instruments (Forex, Stocks, Indices, Commodities, Crypto)\n- Leverage up to 1:500\n- Ultra-low spreads from 0.0 pips\n- MT4 & MT5 platforms\n- Regulated: ASIC (Australia) & VFSC\n- Fast execution & deep liquidity\n- 24/7 multilingual support\n\n🎯 Refer Code: IB1750034233G\n\nOpen your account and start trading with institutional conditions:")
-        with open("/opt/tradingbot/tmgm_logo.png", "rb") as photo:
-            await context.bot.send_photo(chat_id=update.effective_chat.id, photo=photo, caption=msg, reply_markup=broker_links())
+        try:
+            with open("/root/tradingbot/tmgm_logo.png", "rb") as photo:
+                await context.bot.send_photo(chat_id=update.effective_chat.id, photo=photo, caption=msg, reply_markup=broker_links())
+        except Exception:
+            await update.message.reply_text(msg, reply_markup=broker_links())
     elif text == "\U0001f4ca Market Overview":
         await update.message.reply_text("\U0001f504 Loading...", reply_markup=main_menu())
         overview = get_market_overview()
@@ -224,8 +230,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "\U0001f3af Refer Code: IB1750034233G\n\n"
             "Open your account and start trading with institutional conditions:"
         )
-        with open("/opt/tradingbot/tmgm_logo.png", "rb") as photo:
-            await context.bot.send_photo(chat_id=update.effective_chat.id, photo=photo, caption=msg, reply_markup=broker_links())
+        try:
+            with open("/root/tradingbot/tmgm_logo.png", "rb") as photo:
+                await context.bot.send_photo(chat_id=update.effective_chat.id, photo=photo, caption=msg, reply_markup=broker_links())
+        except Exception:
+            await update.message.reply_text(msg, reply_markup=broker_links())
     elif text == "\U0001f381 What You Get":
         msg = (
             "\U0001f381 WHAT YOU GET — 100% FREE\n\n"
@@ -275,6 +284,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "\U0001f4d6 How to Start":
         await update.message.reply_text("\U0001f504 Loading...", reply_markup=edu_menu())
         await update.message.reply_text(get_education("howtostart"), reply_markup=edu_menu())
+
+    else:
+        await update.message.reply_text("Choose an option below \U0001f447", reply_markup=main_menu())
 
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))

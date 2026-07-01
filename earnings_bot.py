@@ -4,7 +4,6 @@ load_dotenv("/root/tradingbot/.env")
 
 import requests
 import json
-import os
 import time
 import anthropic
 from datetime import datetime
@@ -20,7 +19,7 @@ ALPHA_KEY = os.getenv("ALPHA_VANTAGE_KEY")
 IMPORTANT_STOCKS = [
     "AAPL","MSFT","GOOGL","AMZN","META","NVDA","TSLA","JPM","BAC","GS",
     "MS","C","WFC","XOM","CVX","AMD","INTC","NFLX","DIS","V","MA","UBER",
-    "COIN","PYPL","SNAP","TWTR","SHOP","SQ","ROKU","ZM","PLTR","ARM"
+    "COIN","PYPL","SNAP","SHOP","SQ","ROKU","ZM","PLTR","ARM","SMCI"
 ]
 
 def load_users():

@@ -7,7 +7,6 @@ import anthropic
 import feedparser
 import pytz
 import json
-import os
 import time
 from datetime import datetime
 from telegram import Update, ReplyKeyboardMarkup

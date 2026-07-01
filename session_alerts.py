@@ -4,7 +4,6 @@ load_dotenv("/root/tradingbot/.env")
 
 import requests
 import json
-import os
 import time
 import pytz
 from datetime import datetime

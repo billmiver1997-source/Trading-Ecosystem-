@@ -314,7 +314,6 @@ def handle_message(chat_id, text, username):
             send_message(chat_id, "📰 LATEST NEWS\n🕔 "+now_str+"\n\n"+message.content[0].text+"\n\n📰 Full news: @tradingNovaNews", main_menu())
         except Exception as e:
             send_message(chat_id, "🌍 Latest news at @tradingNovaNews", main_menu())
-        send_message(chat_id, "\U0001f30d Latest news is available at @tradingNovaNews", main_menu())
 
     elif text_lower in ["\U0001f4ca analysis", "/analysis"]:
         send_message(chat_id, "Choose a pair:", pairs_menu())
@@ -385,9 +384,6 @@ def handle_message(chat_id, text, username):
             send_message(chat_id, "\n".join(vlines), main_menu())
         except Exception as e:
             send_message(chat_id, "Error: "+str(e), main_menu())
-
-    elif text_lower in ["📊 analysis", "/analysis"]:
-        send_message(chat_id, "Choose a pair or type a pair name (e.g. EURUSD):", pairs_menu())
 
     elif text_lower.startswith("/mtf ") or text_lower.startswith("mtf "):
         send_typing(chat_id)

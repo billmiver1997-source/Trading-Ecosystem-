@@ -6,7 +6,6 @@ import yfinance as yf
 import requests
 import pandas as pd
 import json
-import os
 import time
 from datetime import datetime
 import pytz
@@ -16,10 +15,17 @@ USERS_FILE = "/root/tradingbot/users.json"
 
 PAIRS = {
     "XAU/USD": "GC=F",
+    "Silver/USD": "SI=F",
+    "Oil/USD": "CL=F",
     "BTC/USD": "BTC-USD",
     "SOL/USD": "SOL-USD",
     "EUR/USD": "EURUSD=X",
     "GBP/USD": "GBPUSD=X",
+    "USD/CHF": "USDCHF=X",
+    "AUD/USD": "AUDUSD=X",
+    "USD/CAD": "USDCAD=X",
+    "NZD/USD": "NZDUSD=X",
+    "USD/JPY": "USDJPY=X",
 }
 
 def load_users():
@@ -88,16 +94,17 @@ def backtest_pair(name, symbol):
         sh = high.iloc[i-20:i].max(); slo = low.iloc[i-20:i].min()
         if p > sh: sb += 1
         if p < slo: se += 1
-        if 35 < rsi.iloc[i] < 65: sb += 1; se += 1
+        if 50 < rsi.iloc[i] < 70: sb += 1
+        if 30 < rsi.iloc[i] < 50: se += 1
 
-        if sb >= 4 and trend_4h == "BULL":
+        if sb >= 5 and trend_4h == "BULL":
             tp = p + a*3; sl2 = p - a*1.5
             for j in range(i+1, min(i+60, len(df))):
                 pr = close.iloc[j]
                 if pr >= tp: wins+=1; total_pips+=abs(tp-p); break
                 if pr <= sl2: losses+=1; total_pips-=abs(p-sl2); break
 
-        elif se >= 4 and trend_4h == "BEAR":
+        elif se >= 5 and trend_4h == "BEAR":
             tp = p - a*3; sl2 = p + a*1.5
             for j in range(i+1, min(i+60, len(df))):
                 pr = close.iloc[j]
