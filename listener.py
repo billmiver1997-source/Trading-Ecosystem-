@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv("/root/tradingbot/.env")
 
+import fcntl
 import requests
 import json
 import time
@@ -70,7 +71,7 @@ def answer_callback(callback_id):
 
 def get_updates(offset=None):
     params = {"timeout": 30}
-    if offset:
+    if offset is not None:  # 0 is a valid offset — do not treat it as falsy
         params["offset"] = offset
     r = requests.get("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/getUpdates", params=params, timeout=35)
     return r.json()
@@ -79,7 +80,10 @@ def send_message(chat_id, text, reply_markup=None):
     payload = {"chat_id": chat_id, "text": text[:4000]}
     if reply_markup:
         payload["reply_markup"] = json.dumps(reply_markup)
-    requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage", json=payload)
+    try:
+        requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage", json=payload)
+    except Exception as e:
+        print(f"send_message error to {chat_id}: {e}")
 
 def send_typing(chat_id):
     requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendChatAction",
@@ -226,10 +230,17 @@ def handle_message(chat_id, text, username):
     text_lower = text.lower()
 
     if text_lower in ["/start", "start"]:
-        users = load_users()
-        if str(chat_id) not in users:
-            users.append(str(chat_id))
-            save_users(users)
+        # Lock prevents duplicate appends when two new users /start simultaneously
+        lock_path = USERS_FILE + ".lock"
+        with open(lock_path, "w") as _lf:
+            fcntl.flock(_lf, fcntl.LOCK_EX)
+            try:
+                users = load_users()
+                if str(chat_id) not in users:
+                    users.append(str(chat_id))
+                    save_users(users)
+            finally:
+                fcntl.flock(_lf, fcntl.LOCK_UN)
         send_message(chat_id, WELCOME, main_menu())
 
 
@@ -328,9 +339,11 @@ def handle_message(chat_id, text, username):
         send_typing(chat_id)
         send_message(chat_id, get_analysis(pair_name), main_menu())
 
-    elif any(text_lower.replace(" ","").replace("/","") == k for k in ALIASES.keys()):
-        key = text_lower.replace(" ","").replace("/","")
-        pair_name = ALIASES.get(key, key.upper())
+    elif any(text_lower.replace(" ","").replace("/","") == k.replace(" ","").replace("/","") for k in ALIASES.keys()):
+        normalized = text_lower.replace(" ","").replace("/","")
+        # Find the original key whose normalized form matches, then look up the pair
+        key = next(k for k in ALIASES.keys() if k.replace(" ","").replace("/","") == normalized)
+        pair_name = ALIASES.get(key, normalized.upper())
         send_typing(chat_id)
         send_message(chat_id, get_analysis(pair_name), main_menu())
 
@@ -356,17 +369,31 @@ def handle_message(chat_id, text, username):
             sl_pips = float(parts.get("SL PIPS", 20))
             pair = parts.get("PAIR", "EURUSD").upper()
             risk_amount = balance * (risk_pct / 100)
-            pip_value = 10 if "JPY" not in pair else 1000
+            # Approximate USD pip value per standard lot by instrument type
+            _pip_vals = {
+                "XAUUSD": 1.0, "GOLD": 1.0,       # Gold: 100oz*$0.01=$1/pip
+                "SILVERUSD": 5.0, "SILVER": 5.0,  # Silver: 5000oz*$0.001=$5/pip
+                "OILUSD": 10.0, "OIL": 10.0,      # Oil: 1000bbl*$0.01=$10/pip
+                "BTCUSD": 1.0, "BTC": 1.0,        # BTC: 1 BTC*$1=$1/pip
+                "SOLUSD": 0.1, "SOL": 0.1,        # SOL estimate
+            }
+            pair_key = pair.replace("/", "").upper()
+            if pair_key in _pip_vals:
+                pip_value = _pip_vals[pair_key]
+            elif "JPY" in pair:
+                pip_value = 7  # ~$6.67-7 per pip per lot at 145-150 JPY/USD
+            else:
+                pip_value = 10  # Standard forex: $10/pip/lot
             lots = round(risk_amount / (sl_pips * pip_value), 2)
             msg = "🧮 RISK CALCULATOR\n\nBalance: $"+str(balance)+"\nRisk: "+str(risk_pct)+"% = $"+str(round(risk_amount,2))+"\nSL: "+str(sl_pips)+" pips\nPair: "+pair+"\n\n🎯 Recommended Lots: "+str(lots)+"\n\nRisk/Reward 1:2\nTP = "+str(sl_pips*2)+" pips"
             send_message(chat_id, msg, main_menu())
-        except:
+        except Exception as e:
+            print(f"Risk calculator error: {e}")
             send_message(chat_id, "Format:\nBALANCE: 1000\nRISK: 1\nSL PIPS: 20\nPAIR: EURUSD", main_menu())
 
     elif text_lower in ["💥 volatility alert", "/volatility"]:
         send_typing(chat_id)
         try:
-            import yfinance as yf
             pairs = {"EUR/USD":"EURUSD=X","GBP/USD":"GBPUSD=X","XAU/USD":"GC=F","BTC/USD":"BTC-USD","Oil/USD":"CL=F","USD/JPY":"USDJPY=X","USD/CHF":"USDCHF=X","AUD/USD":"AUDUSD=X","NZD/USD":"NZDUSD=X","USD/CAD":"USDCAD=X","SOL/USD":"SOL-USD","Silver/USD":"SI=F","Copper/USD":"HG=F","DXY":"DX-Y.NYB"}
             vlines = ["💥 VOLATILITY REPORT\n"]
             alerts = []
@@ -393,7 +420,6 @@ def handle_message(chat_id, text, username):
     elif text_lower.startswith("/mtf ") or text_lower.startswith("mtf "):
         send_typing(chat_id)
         try:
-            import yfinance as yf
             pair_input = text_lower.replace("/mtf ","").replace("mtf ","").strip()
             pair_name = ALIASES.get(pair_input, pair_input.upper())
             symbol = SYMBOLS.get(pair_name)
@@ -434,7 +460,7 @@ def handle_message(chat_id, text, username):
 
     elif text_lower in ["💼 portfolio", "/portfolio"]:
         try:
-            import yfinance as yf2
+            yf2 = yf  # already imported at module level
             trades_file = "/root/tradingbot/open_trades.json"
             trades = []
             if os.path.exists(trades_file):
@@ -453,19 +479,24 @@ def handle_message(chat_id, text, username):
                         df = yf2.Ticker(symbol).history(period="5d", interval="1h")
                         price = df["Close"].iloc[-1]
                         entry = t["entry"]
+                        # Instrument-specific pip sizes for correct pip display
+                        _pip_sizes = {
+                            "XAU/USD": 0.01, "Silver/USD": 0.001, "Oil/USD": 0.01,
+                            "BTC/USD": 1.0, "SOL/USD": 0.01, "DXY": 0.001,
+                        }
+                        pip_size = _pip_sizes.get(t["name"], 0.01 if "JPY" in t["name"] else 0.0001)
                         if t["signal"] == "BUY":
-                            pl_pips = round((price - entry) / entry * 10000, 1)
-                            pl_usd = round((price - entry) * 10000, 2)
+                            pl_pips = round((price - entry) / pip_size, 1)
                         else:
-                            pl_pips = round((entry - price) / entry * 10000, 1)
-                            pl_usd = round((entry - price) * 10000, 2)
+                            pl_pips = round((entry - price) / pip_size, 1)
                         pl_emoji = "🟢" if pl_pips > 0 else "🔴"
-                        total_pl += pl_usd
+                        total_pl += pl_pips  # accumulate pips (not USD — no lot size available)
                         lines_p.append(pl_emoji+" "+t["name"]+" "+t["signal"]+" @ "+str(round(entry,4))+" | "+str(pl_pips)+" pips")
-                    except:
+                    except Exception as e:
+                        print(f"Portfolio P&L error for {t.get('name','?')}: {e}")
                         lines_p.append("🟡 "+t["name"]+" "+t["signal"]+" @ "+str(round(t["entry"],4)))
                 total_emoji = "🟢" if total_pl > 0 else "🔴"
-                lines_p.append("\n"+total_emoji+" Total: "+str(round(total_pl,2))+" USD est.")
+                lines_p.append("\n"+total_emoji+" Total: "+str(round(total_pl,1))+" pips est.")
                 send_message(chat_id, "\n".join(lines_p), main_menu())
         except Exception as e:
             send_message(chat_id, "Error: "+str(e), main_menu())
@@ -488,7 +519,8 @@ def handle_message(chat_id, text, username):
             with open(port_file,"w") as f:
                 json.dump(trades,f)
             send_message(chat_id, "💼 Trade added!\n\n"+pair+" "+side+" @ "+str(entry)+"\nSL: "+str(sl)+" | TP: "+str(tp)+"\nLots: "+str(lots), main_menu())
-        except:
+        except Exception as e:
+            print(f"Portfolio add error: {e}")
             send_message(chat_id, "Format:\nADD: EURUSD BUY 1.1200 SL:1.1150 TP:1.1300 LOTS:0.1", main_menu())
 
     elif text_lower in ["📓 trade journal", "/journal"]:
@@ -528,7 +560,8 @@ def handle_message(chat_id, text, username):
             with open(journal_file,"w") as f:
                 json.dump(entries,f)
             send_message(chat_id, "📓 Journal entry added!", main_menu())
-        except:
+        except Exception as e:
+            print(f"Journal add error: {e}")
             send_message(chat_id, "Format:\nJOURNAL: EURUSD BUY WIN +50pips Good entry at support", main_menu())
 
     elif text_lower in ["💰 ib tracker", "/ibtracker"]:
@@ -580,7 +613,8 @@ def handle_message(chat_id, text, username):
             with open(ib_file,"w") as f:
                 json.dump(clients,f)
             send_message(chat_id, "👤 Client "+name+" saved!", main_menu())
-        except:
+        except Exception as e:
+            print(f"IB client add error: {e}")
             send_message(chat_id, "Format:\nCLIENT: John BROKER: puprime LOTS: 50 GOLD: 10", main_menu())
 
     elif text_lower in ["🧮 commission calc", "/commission"]:
@@ -601,7 +635,8 @@ def handle_message(chat_id, text, username):
             total = fx_earn + gold_earn
             msg = "🧮 COMMISSION CALCULATOR\n\nBroker: "+broker.upper()+"\nForex lots: "+str(lots)+" x $"+("18" if broker=="puprime" else "7")+" = $"+str(fx_earn)+"\nGold lots: "+str(gold)+" x $"+("25" if broker=="puprime" else "5")+" = $"+str(gold_earn)+"\n\n💰 Total earnings: $"+str(total)
             send_message(chat_id, msg, main_menu())
-        except:
+        except Exception as e:
+            print(f"Commission calc error: {e}")
             send_message(chat_id, "Format:\nCALC: puprime LOTS: 100 GOLD: 20", main_menu())
 
     elif text_lower in ["📜 signal history", "/history"]:
@@ -636,7 +671,6 @@ def handle_message(chat_id, text, username):
     elif text_lower in ["📍 s&r levels", "/sr"]:
         send_typing(chat_id)
         try:
-            import yfinance as yf
             pairs = {"EUR/USD":"EURUSD=X","GBP/USD":"GBPUSD=X","XAU/USD":"GC=F","BTC/USD":"BTC-USD","Oil/USD":"CL=F","USD/JPY":"USDJPY=X","USD/CHF":"USDCHF=X","AUD/USD":"AUDUSD=X","NZD/USD":"NZDUSD=X","USD/CAD":"USDCAD=X","SOL/USD":"SOL-USD","Silver/USD":"SI=F","Copper/USD":"HG=F","DXY":"DX-Y.NYB"}
             lines_sr = ["📍 SUPPORT & RESISTANCE"]
             for name, symbol in pairs.items():

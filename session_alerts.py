@@ -6,7 +6,7 @@ import requests
 import json
 import time
 import pytz
-from datetime import datetime
+from datetime import datetime, timedelta
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
 USERS_FILE = "/root/tradingbot/users.json"
@@ -48,7 +48,13 @@ def main():
             weekday = now.weekday()
 
             if weekday == 5 or weekday == 6:
-                time.sleep(3600)
+                # Sleep until Monday 00:01 instead of looping every hour for 48h
+                days_until_monday = (7 - weekday) % 7 or 7
+                monday = (now + timedelta(days=days_until_monday)).replace(
+                    hour=0, minute=1, second=0, microsecond=0
+                )
+                sleep_secs = max(60, (monday - now).total_seconds())
+                time.sleep(min(sleep_secs, 86400))  # cap at 24h in case of clock issues
                 continue
 
             hour = now.hour

@@ -71,8 +71,8 @@ def backtest_pair(name, symbol):
     ema50 = close.ewm(span=50).mean()
     ema200 = close.ewm(span=200).mean()
     macd = close.ewm(span=12).mean() - close.ewm(span=26).mean()
-    sl = macd.ewm(span=9).mean()
-    hist = macd - sl
+    signal_line = macd.ewm(span=9).mean()  # renamed from sl to avoid confusion with stop loss
+    hist = macd - signal_line
     delta = close.diff()
     gain = delta.clip(lower=0).rolling(14).mean()
     loss = -delta.clip(upper=0).rolling(14).mean()
@@ -80,7 +80,7 @@ def backtest_pair(name, symbol):
     tr = pd.concat([high-low,(high-close.shift()).abs(),(low-close.shift()).abs()],axis=1).max(axis=1)
     atr = tr.rolling(14).mean()
 
-    wins = losses = 0
+    wins = losses = timeouts = 0
     total_pips = 0.0
 
     for i in range(200, len(df)-60):
@@ -89,8 +89,8 @@ def backtest_pair(name, symbol):
 
         if ema20.iloc[i] > ema50.iloc[i] and p > ema200.iloc[i]: sb += 1
         if ema20.iloc[i] < ema50.iloc[i] and p < ema200.iloc[i]: se += 1
-        if macd.iloc[i] > sl.iloc[i] and hist.iloc[i] > hist.iloc[i-1]: sb += 1
-        if macd.iloc[i] < sl.iloc[i] and hist.iloc[i] < hist.iloc[i-1]: se += 1
+        if macd.iloc[i] > signal_line.iloc[i] and hist.iloc[i] > hist.iloc[i-1]: sb += 1
+        if macd.iloc[i] < signal_line.iloc[i] and hist.iloc[i] < hist.iloc[i-1]: se += 1
         sh = high.iloc[i-20:i].max(); slo = low.iloc[i-20:i].min()
         if p > sh: sb += 1
         if p < slo: se += 1
@@ -99,21 +99,27 @@ def backtest_pair(name, symbol):
 
         if sb >= 5 and trend_4h == "BULL":
             tp = p + a*3; sl2 = p - a*1.5
+            resolved = False
             for j in range(i+1, min(i+60, len(df))):
                 pr = close.iloc[j]
-                if pr >= tp: wins+=1; total_pips+=abs(tp-p); break
-                if pr <= sl2: losses+=1; total_pips-=abs(p-sl2); break
+                if pr >= tp: wins+=1; total_pips+=abs(tp-p); resolved=True; break
+                if pr <= sl2: losses+=1; total_pips-=abs(p-sl2); resolved=True; break
+            if not resolved:
+                timeouts += 1  # trade expired without hitting TP or SL
 
         elif se >= 5 and trend_4h == "BEAR":
             tp = p - a*3; sl2 = p + a*1.5
+            resolved = False
             for j in range(i+1, min(i+60, len(df))):
                 pr = close.iloc[j]
-                if pr <= tp: wins+=1; total_pips+=abs(p-tp); break
-                if pr >= sl2: losses+=1; total_pips-=abs(sl2-p); break
+                if pr <= tp: wins+=1; total_pips+=abs(p-tp); resolved=True; break
+                if pr >= sl2: losses+=1; total_pips-=abs(sl2-p); resolved=True; break
+            if not resolved:
+                timeouts += 1  # trade expired without hitting TP or SL
 
-    total = wins + losses
+    total = wins + losses + timeouts
     winrate = round(wins/total*100, 1) if total > 0 else 0
-    return {"name": name, "wins": wins, "losses": losses, "winrate": winrate, "pips": round(total_pips, 4), "signals": total}
+    return {"name": name, "wins": wins, "losses": losses, "timeouts": timeouts, "winrate": winrate, "pips": round(total_pips, 4), "signals": total}
 
 def run_backtest():
     tz = pytz.timezone("Europe/Athens")
@@ -145,8 +151,9 @@ def run_backtest():
 
     for r in results:
         emoji = "🟢" if r["winrate"] >= 55 else "🟡" if r["winrate"] >= 45 else "🔴"
-        pips_str = ("+") if r["pips"] > 0 else ""
-        lines.append(emoji+" "+r["name"]+": "+str(r["winrate"])+"% ("+str(r["wins"])+"W/"+str(r["losses"])+"L) | "+pips_str+str(r["pips"])+" pips")
+        pips_str = "+" if r["pips"] > 0 else ""
+        timeout_str = ("/"+str(r.get("timeouts",0))+"T") if r.get("timeouts",0) else ""
+        lines.append(emoji+" "+r["name"]+": "+str(r["winrate"])+"% ("+str(r["wins"])+"W/"+str(r["losses"])+"L"+timeout_str+") | "+pips_str+str(r["pips"])+" pips")
 
     best = results[0]
     lines.append("\n🎯 Best: "+best["name"]+" ("+str(best["winrate"])+"% | "+str(best["signals"])+" signals)")

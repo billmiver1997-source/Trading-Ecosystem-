@@ -87,6 +87,30 @@ def save_stats(stats):
         json.dump(stats, f)
     os.replace(tmp, STATS_FILE)
 
+JOURNAL_FILE = "/root/tradingbot/journal.json"
+
+def _append_journal(entry):
+    """Atomically append one entry to journal.json, capped at 200 entries."""
+    lock_path = JOURNAL_FILE + ".lock"
+    with open(lock_path, "w") as _lf:
+        fcntl.flock(_lf, fcntl.LOCK_EX)
+        try:
+            entries = []
+            if os.path.exists(JOURNAL_FILE):
+                try:
+                    with open(JOURNAL_FILE) as f:
+                        entries = json.load(f)
+                except (json.JSONDecodeError, ValueError) as e:
+                    print(f"journal load error: {e}")
+            entries.append(entry)
+            entries = entries[-200:]
+            tmp = JOURNAL_FILE + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(entries, f)
+            os.replace(tmp, JOURNAL_FILE)
+        finally:
+            fcntl.flock(_lf, fcntl.LOCK_UN)
+
 def send_all(msg):
     for chat_id in load_users():
         try:
@@ -133,14 +157,16 @@ def _check_trades_inner():
     if not trades:
         return
 
-    remaining = []
     stats = load_stats()
     tz = pytz.timezone("Europe/Athens")
+    remaining = []
+    closed = []  # list of (trade, "WIN"/"LOSS", pips, now_str)
 
     for trade in trades:
         name = trade["name"]
         symbol = SYMBOLS.get(name)
         if not symbol:
+            remaining.append(trade)
             continue
 
         price = get_price(symbol)
@@ -180,12 +206,32 @@ def _check_trades_inner():
                 )
 
         if tp_hit:
-            pips = abs(tp - entry)
+            closed.append((trade, "WIN", abs(tp - entry), now))
+        elif sl_hit:
+            closed.append((trade, "LOSS", abs(sl - entry), now))
+        else:
+            remaining.append(trade)
+
+    # Remove closed trades from persistent storage FIRST so a crash here
+    # can't cause double-counting on the next check cycle.
+    save_trades(remaining)
+
+    # Now update stats, send notifications, and write journal for each closed trade
+    for trade, result, pips, now in closed:
+        name = trade["name"]
+        signal = trade["signal"]
+        entry = trade["entry"]
+        sl = trade["sl"]
+        tp = trade["tp"]
+        emoji = PAIR_EMOJIS.get(name, "")
+
+        if "by_pair" not in stats:
+            stats["by_pair"] = {}
+        pair_s = stats["by_pair"].setdefault(name, {"wins": 0, "losses": 0})
+
+        if result == "WIN":
             stats["wins"] += 1
             stats["total_pips"] += pips
-            if "by_pair" not in stats:
-                stats["by_pair"] = {}
-            pair_s = stats["by_pair"].setdefault(name, {"wins": 0, "losses": 0})
             pair_s["wins"] += 1
             save_stats(stats)
             total = stats["wins"] + stats["losses"]
@@ -201,25 +247,11 @@ def _check_trades_inner():
             )
             send_all(msg)
             print("TP hit: " + name)
-            # Auto journal
-            jf = "/root/tradingbot/journal.json"
-            if os.path.exists(jf):
-                with open(jf) as f_j:
-                    entries = json.load(f_j)
-            else:
-                entries = []
-            entries.append({"pair":name,"side":signal,"result":"WIN","pips":"+"+str(round(pips,4)),"note":"Auto - TP Hit","date":now})
-            entries = entries[-200:]
-            with open(jf, "w") as f_j:
-                json.dump(entries, f_j)
+            _append_journal({"pair":name,"side":signal,"result":"WIN","pips":"+"+str(round(pips,4)),"note":"Auto - TP Hit","date":now})
 
-        elif sl_hit:
-            pips = abs(sl - entry)
+        else:  # LOSS
             stats["losses"] += 1
             stats["total_pips"] -= pips
-            if "by_pair" not in stats:
-                stats["by_pair"] = {}
-            pair_s = stats["by_pair"].setdefault(name, {"wins": 0, "losses": 0})
             pair_s["losses"] += 1
             save_stats(stats)
             total = stats["wins"] + stats["losses"]
@@ -235,22 +267,7 @@ def _check_trades_inner():
             )
             send_all(msg)
             print("SL hit: " + name)
-            # Auto journal
-            jf = "/root/tradingbot/journal.json"
-            if os.path.exists(jf):
-                with open(jf) as f_j:
-                    entries = json.load(f_j)
-            else:
-                entries = []
-            entries.append({"pair":name,"side":signal,"result":"LOSS","pips":"-"+str(round(pips,4)),"note":"Auto - SL Hit","date":now})
-            entries = entries[-200:]
-            with open(jf, "w") as f_j:
-                json.dump(entries, f_j)
-
-        else:
-            remaining.append(trade)
-
-    save_trades(remaining)
+            _append_journal({"pair":name,"side":signal,"result":"LOSS","pips":"-"+str(round(pips,4)),"note":"Auto - SL Hit","date":now})
 
 def send_daily_stats():
     stats = load_stats()

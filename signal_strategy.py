@@ -388,11 +388,18 @@ def get_news_blocked_currencies():
 def get_min_score(name):
     """Returns required score threshold based on recent win rate for this pair."""
     journal_file = "/root/tradingbot/journal.json"
+    journal_lock = journal_file + ".lock"
     try:
         if not os.path.exists(journal_file):
             return 5
-        with open(journal_file) as f:
-            entries = json.load(f)
+        # Shared read lock prevents reading a torn file during a concurrent write
+        with open(journal_lock, "w") as _lf:
+            fcntl.flock(_lf, fcntl.LOCK_SH)
+            try:
+                with open(journal_file) as f:
+                    entries = json.load(f)
+            finally:
+                fcntl.flock(_lf, fcntl.LOCK_UN)
         pair_entries = [e for e in entries if e.get("pair") == name][-20:]
         if len(pair_entries) < 10:
             return 5

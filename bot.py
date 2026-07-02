@@ -129,12 +129,16 @@ def get_education(topic):
         "psychology": "Explain trading psychology: FOMO, revenge trading, discipline. Max 200 words. Use emojis. Plain text only.",
         "howtostart": "Step by step guide to start trading for a complete beginner. Max 200 words. Use emojis. Plain text only.",
     }
-    message = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=500,
-        messages=[{"role": "user", "content": prompts.get(topic, "")}]
-    )
-    return message.content[0].text
+    try:
+        message = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=500,
+            messages=[{"role": "user", "content": prompts.get(topic, "")}]
+        )
+        return message.content[0].text
+    except Exception as e:
+        print(f"Education API error for topic '{topic}': {e}")
+        return "Education content temporarily unavailable. Please try again later."
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -144,8 +148,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         username = "@"+user.username if user.username else "no username"
         notify = "\U0001f514 NEW USER\n\nName: "+name+" | "+username+"\nID: "+str(user.id)
         await context.bot.send_message(chat_id=OWNER_ID, text=notify)
-    except:
-        pass
+    except Exception as e:
+        print(f"Owner notify error: {e}")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text

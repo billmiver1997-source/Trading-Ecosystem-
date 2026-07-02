@@ -125,7 +125,7 @@ def get_ai_summary(headlines, category):
     message = client.messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=400,
-        messages=[{"role":"user","content":prompts[category]+"\n\nHeadlines:\n"+"\n".join(headlines)}]
+        messages=[{"role":"user","content":prompts.get(category,"Summarize these headlines for traders. Use emojis.")+"\n\nHeadlines:\n"+"\n".join(headlines)}]
     )
     return message.content[0].text
 
@@ -175,7 +175,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text in ["📅 Calendar"]:
         await update.message.reply_text("🔄 Loading...", reply_markup=MAIN_MENU)
         try:
-            import requests as req2
             from bs4 import BeautifulSoup
             from datetime import datetime as dt5
             tz2 = pytz.timezone("Europe/Athens")
@@ -183,7 +182,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             now_str = dt5.now(tz2).strftime("%d/%m/%Y")
             h = {"User-Agent":"Mozilla/5.0","X-Requested-With":"XMLHttpRequest","Referer":"https://www.investing.com/economic-calendar/"}
             d = {"dateFrom":today,"dateTo":today,"importance[]":["2","3"]}
-            r = req2.post("https://www.investing.com/economic-calendar/Service/getCalendarFilteredData",headers=h,data=d,timeout=15)
+            r = requests.post("https://www.investing.com/economic-calendar/Service/getCalendarFilteredData",headers=h,data=d,timeout=15)
             soup = BeautifulSoup(r.json().get("data",""),"html.parser")
             rows = soup.find_all("tr",id=lambda x: x and x.startswith("eventRowId_"))
             events = []
@@ -206,7 +205,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 from datetime import timedelta
                 tomorrow = (dt5.now(tz2) + timedelta(days=1)).strftime("%Y-%m-%d")
                 d2 = {"dateFrom":tomorrow,"dateTo":tomorrow,"importance[]":["2","3"]}
-                r2 = req2.post("https://www.investing.com/economic-calendar/Service/getCalendarFilteredData",headers=h,data=d2,timeout=15)
+                r2 = requests.post("https://www.investing.com/economic-calendar/Service/getCalendarFilteredData",headers=h,data=d2,timeout=15)
                 soup2 = BeautifulSoup(r2.json().get("data",""),"html.parser")
                 rows2 = soup2.find_all("tr",id=lambda x: x and x.startswith("eventRowId_"))
                 tomorrow_events = []
@@ -234,8 +233,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text in ["🧠 Sentiment"]:
         await update.message.reply_text("🔄 Loading...", reply_markup=MAIN_MENU)
         try:
-            import requests as req3
-            r = req3.get("https://api.alternative.me/fng/?limit=1", timeout=10)
+            r = requests.get("https://api.alternative.me/fng/?limit=1", timeout=10)
             data = r.json()["data"][0]
             value = int(data["value"])
             classification = data["value_classification"]
@@ -263,8 +261,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         all_headlines.append(title)
                     if len(all_headlines) >= 8:
                         break
-            except:
+            except Exception as e:
+                print(f"Feed parse error {feed_url}: {e}")
                 continue
+            if len(all_headlines) >= 8:  # also break the outer feed loop
+                break
+        if not all_headlines:
+            await update.message.reply_text(
+                "\U0001f4f0 No major market news found right now.\n\n\U0001f4f0 Full coverage: @tradingNovaNews",
+                reply_markup=MAIN_MENU
+            )
+            return
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
