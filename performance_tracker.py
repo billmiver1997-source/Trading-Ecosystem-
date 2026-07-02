@@ -130,18 +130,6 @@ def get_price(symbol):
         print(f"get_price error {symbol}: {e}")
     return None
 
-def add_trade(name, signal, entry, sl, tp):
-    trades = load_trades()
-    trades.append({
-        "name": name,
-        "signal": signal,
-        "entry": entry,
-        "sl": sl,
-        "tp": tp,
-        "time": time.time()
-    })
-    save_trades(trades)
-
 def check_trades():
     # Exclusive lock prevents race with signal_strategy.py writing to the same file
     lock_path = TRADES_FILE + '.lock'

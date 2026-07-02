@@ -114,20 +114,24 @@ def get_news(category):
 def get_ai_summary(headlines, category):
     if not headlines:
         return "No recent news found for this category."
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    prompts = {
-        "ukraine": "You are a Ukrainian news editor. Based on these headlines write a structured summary in Ukrainian language. Format it in 3 sections: ⚔️ ВІЙСЬКОВІ ДІЇ (military updates), 🏛 ПОЛІТИКА (political news), 💰 ЕКОНОМІКА (economic news). Each section 2-3 sentences. Use emojis. Plain text only.",
-        "greece": "Σύνοψε αυτές τις ειδήσεις για την Ελλάδα. Γράψε στα Ελληνικά. 5-8 σύντομες παράγραφοι με emoji.",
-        "finance": "Summarize these financial news for traders. 5-8 short bullet points. Simple English. Use emojis.",
-        "geopolitics": "Summarize these geopolitical news. 5-8 short bullet points. Simple English. Use emojis.",
-        "markets": "Summarize these market/trade news for investors. 5-8 short bullet points. Simple English. Use emojis."
-    }
-    message = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=400,
-        messages=[{"role":"user","content":prompts.get(category,"Summarize these headlines for traders. Use emojis.")+"\n\nHeadlines:\n"+"\n".join(headlines)}]
-    )
-    return message.content[0].text
+    try:
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        prompts = {
+            "ukraine": "You are a Ukrainian news editor. Based on these headlines write a structured summary in Ukrainian language. Format it in 3 sections: ⚔️ ВІЙСЬКОВІ ДІЇ (military updates), 🏛 ПОЛІТИКА (political news), 💰 ЕКОНОМІКА (economic news). Each section 2-3 sentences. Use emojis. Plain text only.",
+            "greece": "Σύνοψε αυτές τις ειδήσεις για την Ελλάδα. Γράψε στα Ελληνικά. 5-8 σύντομες παράγραφοι με emoji.",
+            "finance": "Summarize these financial news for traders. 5-8 short bullet points. Simple English. Use emojis.",
+            "geopolitics": "Summarize these geopolitical news. 5-8 short bullet points. Simple English. Use emojis.",
+            "markets": "Summarize these market/trade news for investors. 5-8 short bullet points. Simple English. Use emojis."
+        }
+        message = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=400,
+            messages=[{"role":"user","content":prompts.get(category,"Summarize these headlines for traders. Use emojis.")+"\n\nHeadlines:\n"+"\n".join(headlines)}]
+        )
+        return message.content[0].text
+    except Exception as e:
+        print(f"get_ai_summary error ({category}): {e}")
+        return "AI summary temporarily unavailable."
 
 TITLES = {
     "ukraine": "\U0001f1fa\U0001f1e6 UKRAINE NEWS",
@@ -272,14 +276,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=MAIN_MENU
             )
             return
-        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-        message = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=300,
-            messages=[{"role":"user","content":"Pick 5 most important headlines for traders. One short line each with emoji. Simple English.\n\n"+"\n".join(all_headlines[:8])}]
-        )
+        try:
+            client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+            message = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=300,
+                messages=[{"role":"user","content":"Pick 5 most important headlines for traders. One short line each with emoji. Simple English.\n\n"+"\n".join(all_headlines[:8])}]
+            )
+            summary_text = message.content[0].text
+        except Exception as e:
+            print(f"Latest news AI error: {e}")
+            summary_text = "\n".join("• "+h for h in all_headlines[:5])
         await update.message.reply_text(
-            "\U0001f4f0 LATEST NEWS | "+now+"\n\n"+message.content[0].text+"\n\n\U0001f4f0 @tradingNovaNews",
+            "\U0001f4f0 LATEST NEWS | "+now+"\n\n"+summary_text+"\n\n\U0001f4f0 @tradingNovaNews",
             reply_markup=MAIN_MENU
         )
 

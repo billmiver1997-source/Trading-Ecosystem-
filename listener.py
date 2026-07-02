@@ -54,8 +54,11 @@ WELCOME = (
 
 def load_users():
     if os.path.exists(USERS_FILE):
-        with open(USERS_FILE) as f:
-            return json.load(f)
+        try:
+            with open(USERS_FILE) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"load_users JSON error: {e}")
     return []
 
 def save_users(users):
@@ -86,8 +89,11 @@ def send_message(chat_id, text, reply_markup=None):
         print(f"send_message error to {chat_id}: {e}")
 
 def send_typing(chat_id):
-    requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendChatAction",
-        json={"chat_id": chat_id, "action": "typing"})
+    try:
+        requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendChatAction",
+            json={"chat_id": chat_id, "action": "typing"})
+    except Exception as e:
+        print(f"send_typing error: {e}")
 
 def inline_main_menu():
     return json.dumps({"inline_keyboard": [
@@ -196,11 +202,17 @@ def get_status():
     trades = []
     stats = {"wins":0,"losses":0}
     if os.path.exists(trades_file):
-        with open(trades_file) as f:
-            trades = json.load(f)
+        try:
+            with open(trades_file) as f:
+                trades = json.load(f)
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"get_status trades JSON error: {e}")
     if os.path.exists(stats_file):
-        with open(stats_file) as f:
-            stats = json.load(f)
+        try:
+            with open(stats_file) as f:
+                stats = json.load(f)
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"get_status stats JSON error: {e}")
     total = stats["wins"]+stats["losses"]
     wr = round((stats["wins"]/total)*100,1) if total > 0 else 0
     tz = pytz.timezone("Europe/Athens")
@@ -394,8 +406,7 @@ def handle_message(chat_id, text, username):
     elif text_lower in ["💥 volatility alert", "/volatility"]:
         send_typing(chat_id)
         try:
-            pairs = {"EUR/USD":"EURUSD=X","GBP/USD":"GBPUSD=X","XAU/USD":"GC=F","BTC/USD":"BTC-USD","Oil/USD":"CL=F","USD/JPY":"USDJPY=X","USD/CHF":"USDCHF=X","AUD/USD":"AUDUSD=X","NZD/USD":"NZDUSD=X","USD/CAD":"USDCAD=X","SOL/USD":"SOL-USD","Silver/USD":"SI=F","Copper/USD":"HG=F","DXY":"DX-Y.NYB"}
-            vlines = ["💥 VOLATILITY REPORT\n"]
+                vlines = ["💥 VOLATILITY REPORT\n"]
             alerts = []
             vpairs = {"EUR/USD":"EURUSD=X","GBP/USD":"GBPUSD=X","XAU/USD":"GC=F","BTC/USD":"BTC-USD","Oil/USD":"CL=F","USD/JPY":"USDJPY=X","USD/CHF":"USDCHF=X","SOL/USD":"SOL-USD","AUD/USD":"AUDUSD=X"}
             for vname, vsymbol in vpairs.items():
@@ -464,8 +475,11 @@ def handle_message(chat_id, text, username):
             trades_file = "/root/tradingbot/open_trades.json"
             trades = []
             if os.path.exists(trades_file):
-                with open(trades_file) as f:
-                    trades = json.load(f)
+                try:
+                    with open(trades_file) as f:
+                        trades = json.load(f)
+                except (json.JSONDecodeError, ValueError) as e:
+                    print(f"Portfolio trades JSON error: {e}")
             if not trades:
                 send_message(chat_id, "💼 PORTFOLIO\n\nNo open signals right now.", main_menu())
             else:
@@ -568,7 +582,7 @@ def handle_message(chat_id, text, username):
         try:
             ib_file = "/root/tradingbot/ib_clients.json"
             if not os.path.exists(ib_file):
-                send_message(chat_id, "💰 IB TRACKER\n\nNo clients yet.\n\nAdd a client:\nCLIENT: John BROKER: puprime LOTS: 50 GOLD: 10", main_menu())
+                send_message(chat_id, "💰 IB TRACKER\n\nNo clients yet.\n\nAdd a client:\nCLIENT: John BROKER:puprime LOTS:50 GOLD:10", main_menu())
             else:
                 with open(ib_file) as f:
                     clients = json.load(f)
@@ -615,10 +629,10 @@ def handle_message(chat_id, text, username):
             send_message(chat_id, "👤 Client "+name+" saved!", main_menu())
         except Exception as e:
             print(f"IB client add error: {e}")
-            send_message(chat_id, "Format:\nCLIENT: John BROKER: puprime LOTS: 50 GOLD: 10", main_menu())
+            send_message(chat_id, "Format:\nCLIENT: John BROKER:puprime LOTS:50 GOLD:10", main_menu())
 
     elif text_lower in ["🧮 commission calc", "/commission"]:
-        send_message(chat_id, "🧮 COMMISSION CALCULATOR\n\nCalculate your IB earnings:\n\nCALC: puprime LOTS: 100 GOLD: 20\n\nPU Prime rates:\nForex: $18/lot\nGold: $25/lot\n\nEquiti rates:\nForex: $7/lot\nGold: $5/lot", main_menu())
+        send_message(chat_id, "🧮 COMMISSION CALCULATOR\n\nCalculate your IB earnings:\n\nCALC: puprime LOTS:100 GOLD:20\n\nPU Prime rates:\nForex: $18/lot\nGold: $25/lot\n\nEquiti rates:\nForex: $7/lot\nGold: $5/lot", main_menu())
 
     elif text_lower.startswith("calc:"):
         try:
@@ -637,7 +651,7 @@ def handle_message(chat_id, text, username):
             send_message(chat_id, msg, main_menu())
         except Exception as e:
             print(f"Commission calc error: {e}")
-            send_message(chat_id, "Format:\nCALC: puprime LOTS: 100 GOLD: 20", main_menu())
+            send_message(chat_id, "Format:\nCALC: puprime LOTS:100 GOLD:20", main_menu())
 
     elif text_lower in ["📜 signal history", "/history"]:
         try:

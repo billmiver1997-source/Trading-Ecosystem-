@@ -376,7 +376,8 @@ def get_news_blocked_currencies():
                 delta_min = (event_dt - now).total_seconds() / 60
                 if -15 <= delta_min <= 30:
                     blocked.add(currency)
-            except Exception:
+            except Exception as e:
+                print(f"News calendar row parse error: {e}")
                 continue
         if blocked:
             print(f"News filter blocking currencies: {blocked}")
