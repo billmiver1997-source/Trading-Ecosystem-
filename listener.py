@@ -45,7 +45,10 @@ WELCOME = (
     "\U0001f7e1 BTC/USD | \U0001f535 SOL/USD | \u26fd Oil/USD\n"
     "...and many more!\n\n"
     "\U0001f3af Signals are sent only when a real opportunity is detected.\n\n"
-    "Use the menu below to get started \U0001f447"
+    "Use the menu below to get started \U0001f447\n\n"
+    "\u26a0\ufe0f Disclaimer: All signals and content are for educational purposes only and do not constitute financial advice. "
+    "Trading involves substantial risk of loss. Past performance does not guarantee future results. "
+    "Never risk more than you can afford to lose."
 )
 
 def load_users():

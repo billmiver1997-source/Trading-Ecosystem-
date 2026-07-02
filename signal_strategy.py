@@ -308,7 +308,8 @@ def format_poi(name, poi):
         "TP: "+str(poi["tp"])+"\n"
         "R:R = "+rr+"\n\n"
         "Score: "+str(poi["score"])+"/7 | ATR: "+str(round(poi["atr"],5))+"\n"
-        "Strategy: SMC + EMA + MACD | 1H"
+        "Strategy: SMC + EMA + MACD | 1H\n\n"
+        "⚠️ For educational purposes only. Not financial advice. Trading involves significant risk of loss."
     )
 
 def add_trade(name, poi):

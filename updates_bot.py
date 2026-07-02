@@ -55,7 +55,7 @@ def daily_tip():
     prompt = random.choice(topics)
     text = ai(prompt)
     if text:
-        send("\U0001f4a1 DAILY TIP\n\n"+text+"\n\n\U0001f4ca @novasignalschannel1")
+        send("\U0001f4a1 DAILY TIP\n\n"+text+"\n\n\U0001f4ca @novasignalschannel1\n\n⚠️ Educational purposes only. Not financial advice.")
 
 def psychology_post():
     text = ai("Write a trading psychology post for forex/crypto traders. Include a quote from a famous trader. Then 2-3 sentences about discipline, FOMO, or patience. Max 5 sentences. No markdown. Use emojis.")

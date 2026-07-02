@@ -27,7 +27,8 @@ def get_welcome(name=""):
         "\U0001f9e0 Daily sentiment \u2014 Fear & Greed, DXY, VIX\n"
         "\U0001f4c5 Economic calendar \u2014 every morning at 08:00\n"
         "\U0001f4da Education \u2014 Forex, Crypto, SMC, Risk Management\n\n"
-        "\U0001f447 What do you want to explore first?"
+        "\U0001f447 What do you want to explore first?\n\n"
+        "⚠️ Disclaimer: All content is for educational purposes only and does not constitute financial advice. Trading involves substantial risk of loss. Never invest more than you can afford to lose."
     )
 
 def main_menu():

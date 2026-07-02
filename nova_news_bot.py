@@ -144,7 +144,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "global news, and sentiment analysis. Customize your feed and access the exact "
         "insights you need, precisely when you need them.\n\n"
         "🧠 Powered by AI to filter the noise and deliver high impact market data.\n\n"
-        "👇 Select a category below to fetch the latest updates:"
+        "👇 Select a category below to fetch the latest updates:\n\n"
+        "⚠️ All content is for informational purposes only and does not constitute financial advice."
     )
     await update.message.reply_text(msg, reply_markup=MAIN_MENU)
 
