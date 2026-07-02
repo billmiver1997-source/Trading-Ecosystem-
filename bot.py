@@ -105,8 +105,8 @@ def get_market_overview():
             change = ((df["Close"].iloc[-1] - df["Close"].iloc[-24]) / df["Close"].iloc[-24]) * 100
             emoji = "\U0001f7e2" if change > 0 else "\U0001f534"
             result.append(emoji+" "+name+": "+str(round(price,4))+" ("+("{:+.2f}".format(change))+"%)")
-        except:
-            pass
+        except Exception as e:
+            print(f"Market overview error for {name}: {e}")
     tz = pytz.timezone("Europe/Athens")
     now = datetime.now(tz).strftime("%d/%m/%Y %H:%M")
     result.append("\n\U0001f554 "+now)

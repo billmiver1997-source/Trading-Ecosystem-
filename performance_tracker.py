@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv("/root/tradingbot/.env")
 
+import fcntl
 import yfinance as yf
 import requests
 import json
@@ -29,6 +30,7 @@ SYMBOLS = {
     "BTC/USD": "BTC-USD",
     "SOL/USD": "SOL-USD",
     "DXY": "DX-Y.NYB",
+    "USD/JPY": "USDJPY=X",
 }
 
 PAIR_EMOJIS = {
@@ -56,23 +58,34 @@ def load_users():
 
 def load_trades():
     if os.path.exists(TRADES_FILE):
-        with open(TRADES_FILE) as f:
-            return json.load(f)
+        try:
+            with open(TRADES_FILE) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"load_trades JSON error (file may be corrupted): {e}")
     return []
 
 def save_trades(trades):
-    with open(TRADES_FILE, "w") as f:
+    # atomic write prevents partial-write corruption
+    tmp = TRADES_FILE + '.tmp'
+    with open(tmp, 'w') as f:
         json.dump(trades, f)
+    os.replace(tmp, TRADES_FILE)
 
 def load_stats():
     if os.path.exists(STATS_FILE):
-        with open(STATS_FILE) as f:
-            return json.load(f)
+        try:
+            with open(STATS_FILE) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"load_stats JSON error: {e}")
     return {"wins": 0, "losses": 0, "total_pips": 0.0, "by_pair": {}}
 
 def save_stats(stats):
-    with open(STATS_FILE, "w") as f:
+    tmp = STATS_FILE + '.tmp'
+    with open(tmp, 'w') as f:
         json.dump(stats, f)
+    os.replace(tmp, STATS_FILE)
 
 def send_all(msg):
     for chat_id in load_users():
@@ -106,6 +119,16 @@ def add_trade(name, signal, entry, sl, tp):
     save_trades(trades)
 
 def check_trades():
+    # Exclusive lock prevents race with signal_strategy.py writing to the same file
+    lock_path = TRADES_FILE + '.lock'
+    with open(lock_path, 'w') as _lf:
+        fcntl.flock(_lf, fcntl.LOCK_EX)
+        try:
+            _check_trades_inner()
+        finally:
+            fcntl.flock(_lf, fcntl.LOCK_UN)
+
+def _check_trades_inner():
     trades = load_trades()
     if not trades:
         return

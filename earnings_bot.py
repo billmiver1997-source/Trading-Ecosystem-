@@ -38,6 +38,9 @@ def send_all(msg):
             print(f"send_all error {chat_id}: {e}")
 
 def get_earnings():
+    if not ALPHA_KEY:
+        print("get_earnings: ALPHA_VANTAGE_KEY not set, skipping")
+        return []
     try:
         tz = pytz.timezone("Europe/Athens")
         today = datetime.now(tz).strftime("%Y-%m-%d")

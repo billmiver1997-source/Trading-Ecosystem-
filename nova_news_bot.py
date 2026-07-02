@@ -195,7 +195,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     ev_name = tds[3].text.strip() if len(tds)>3 else ""
                     if currency in ["USD","EUR","GBP","JPY","CHF","AUD","CAD","NZD"]:
                         events.append("📍 "+ev_time+" | "+currency+" | "+ev_name)
-                except: continue
+                except Exception as e:
+                    print(f"Calendar row parse error (today): {e}")
+                    continue
             msg = "📅 FOREX CALENDAR | "+now_str+chr(10)+chr(10)
             if events:
                 msg += chr(10).join(events)
@@ -216,7 +218,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         ev_name = tds[3].text.strip() if len(tds)>3 else ""
                         if currency in ["USD","EUR","GBP","JPY","CHF","AUD","CAD","NZD"]:
                             tomorrow_events.append("📍 "+ev_time+" | "+currency+" | "+ev_name)
-                    except: continue
+                    except Exception as e:
+                        print(f"Calendar row parse error (tomorrow): {e}")
+                        continue
                 if tomorrow_events:
                     msg += "📌 No major events today."+chr(10)+chr(10)+"📆 TOMORROW:"+chr(10)+chr(10)+chr(10).join(tomorrow_events)
                 else:

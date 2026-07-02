@@ -274,7 +274,8 @@ def handle_message(chat_id, text, username):
                         if forecast: line += " F:"+forecast
                         if previous: line += " P:"+previous
                         events.append(line)
-                except:
+                except Exception as e:
+                    print(f"Calendar row parse error: {e}")
                     continue
             msg = "📅 FOREX CALENDAR | "+now_str+"\n\n"
             if events:
@@ -378,7 +379,8 @@ def handle_message(chat_id, text, username):
                     elif pct > 120: emoji = "🟠"
                     else: emoji = "🟢"
                     vlines.append(emoji+" "+vname+": ATR "+str(round(atr,4))+" ("+str(int(pct))+"% of avg)")
-                except: pass
+                except Exception as e:
+                    print(f"Volatility pair error {vname}: {e}")
             if alerts:
                 vlines.append("\n🚨 HIGH VOLATILITY: "+" | ".join(alerts))
             send_message(chat_id, "\n".join(vlines), main_menu())
@@ -648,7 +650,8 @@ def handle_message(chat_id, text, username):
                     lines_sr.append("\n"+name+" | "+str(round(price,4)))
                     lines_sr.append("🔴 R2: "+str(r2)+" | R1: "+str(r1))
                     lines_sr.append("🟢 S1: "+str(s1)+" | S2: "+str(s2))
-                except: pass
+                except Exception as e:
+                    print(f"S&R pair error {name}: {e}")
             send_message(chat_id, "\n".join(lines_sr), main_menu())
         except Exception as e:
             send_message(chat_id, "Error: "+str(e), main_menu())

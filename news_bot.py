@@ -109,10 +109,14 @@ def main():
             minute = now.minute
             today = now.strftime("%Y-%m-%d")
 
-            # Silence 01:00 - 06:59
+            # Silence 01:00 - 06:59; sleep until 06:55 to avoid missing the 07:00 window
             if 1 <= hour < 7:
                 print("Silence hours - sleeping...")
-                time.sleep(1800)
+                tz = pytz.timezone("Europe/Athens")
+                _now = datetime.now(tz)
+                _wake = _now.replace(hour=6, minute=55, second=0, microsecond=0)
+                _secs = max(60, (_wake - _now).total_seconds())
+                time.sleep(min(_secs, 1800))
                 continue
 
             # Check schedule

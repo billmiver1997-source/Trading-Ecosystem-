@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv("/root/tradingbot/.env")
 
+import fcntl
 import yfinance as yf
 import requests
 import pandas as pd
@@ -78,13 +79,18 @@ def get_trend_15m(symbol):
 
 def load_last_signals():
     if os.path.exists(LAST_SIGNAL_FILE):
-        with open(LAST_SIGNAL_FILE) as f:
-            return json.load(f)
+        try:
+            with open(LAST_SIGNAL_FILE) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"load_last_signals JSON error: {e}")
     return {}
 
 def save_last_signals(data):
-    with open(LAST_SIGNAL_FILE, "w") as f:
+    tmp = LAST_SIGNAL_FILE + '.tmp'
+    with open(tmp, 'w') as f:
         json.dump(data, f)
+    os.replace(tmp, LAST_SIGNAL_FILE)
 
 def send_signal(msg):
     try:
@@ -307,14 +313,27 @@ def format_poi(name, poi):
 
 def add_trade(name, poi):
     trades_file = "/root/tradingbot/open_trades.json"
-    trades = []
-    if os.path.exists(trades_file):
-        with open(trades_file) as f:
-            trades = json.load(f)
+    lock_path = trades_file + '.lock'
     signal = "BUY" if poi["bias"] == "BULLISH" else "SELL"
-    trades.append({"name": name, "signal": signal, "entry": poi["price"], "sl": poi["sl"], "tp": poi["tp"], "atr": poi["atr"], "time": time.time()})
-    with open(trades_file, "w") as f:
-        json.dump(trades, f)
+    new_trade = {"name": name, "signal": signal, "entry": poi["price"], "sl": poi["sl"], "tp": poi["tp"], "atr": poi["atr"], "time": time.time()}
+    # Exclusive lock prevents race with performance_tracker.py
+    with open(lock_path, 'w') as _lf:
+        fcntl.flock(_lf, fcntl.LOCK_EX)
+        try:
+            trades = []
+            if os.path.exists(trades_file):
+                try:
+                    with open(trades_file) as f:
+                        trades = json.load(f)
+                except (json.JSONDecodeError, ValueError) as e:
+                    print(f"add_trade JSON error: {e}")
+            trades.append(new_trade)
+            tmp = trades_file + '.tmp'
+            with open(tmp, 'w') as f:
+                json.dump(trades, f)
+            os.replace(tmp, trades_file)
+        finally:
+            fcntl.flock(_lf, fcntl.LOCK_UN)
 
 PAIR_CURRENCIES = {
     "XAU/USD": ["USD"], "Silver/USD": ["USD"], "Oil/USD": ["USD"],
@@ -412,8 +431,11 @@ def main():
             open_trades_file = "/root/tradingbot/open_trades.json"
             open_trades = []
             if os.path.exists(open_trades_file):
-                with open(open_trades_file) as f:
-                    open_trades = json.load(f)
+                try:
+                    with open(open_trades_file) as f:
+                        open_trades = json.load(f)
+                except (json.JSONDecodeError, ValueError) as e:
+                    print(f"load open_trades JSON error: {e}")
             open_pairs = set(t["name"] for t in open_trades)
 
             for name, symbol in ALL_PAIRS.items():

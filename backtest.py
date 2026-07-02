@@ -150,7 +150,7 @@ def run_backtest():
 
     best = results[0]
     lines.append("\n🎯 Best: "+best["name"]+" ("+str(best["winrate"])+"% | "+str(best["signals"])+" signals)")
-    lines.append("Strategy: SMC + EMA200 + MACD + HTF 4H | Score>=4 | R:R 1:3")
+    lines.append("Strategy: SMC + EMA200 + MACD + HTF 4H | Score>=5 | R:R 1:3")
 
     send_all("\n".join(lines))
     print("Backtest report sent!")
