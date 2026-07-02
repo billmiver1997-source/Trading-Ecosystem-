@@ -66,8 +66,8 @@ def collect_news():
                     high_impact.append(title)
                 elif any(k in title_lower for k in KEYWORDS):
                     headlines.append(title)
-        except:
-            pass
+        except Exception as e:
+            print(f"collect_news feed error {feed_url}: {e}")
     if high_impact:
         return list(set(high_impact))[:40]
     return list(set(headlines))[:40]

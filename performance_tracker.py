@@ -179,12 +179,16 @@ def check_trades():
             send_all(msg)
             print("TP hit: " + name)
             # Auto journal
-            import json as j2
             jf = "/root/tradingbot/journal.json"
-            entries = j2.load(open(jf)) if os.path.exists(jf) else []
+            if os.path.exists(jf):
+                with open(jf) as f_j:
+                    entries = json.load(f_j)
+            else:
+                entries = []
             entries.append({"pair":name,"side":signal,"result":"WIN","pips":"+"+str(round(pips,4)),"note":"Auto - TP Hit","date":now})
             entries = entries[-200:]
-            with open(jf,"w") as f2: j2.dump(entries,f2)
+            with open(jf, "w") as f_j:
+                json.dump(entries, f_j)
 
         elif sl_hit:
             pips = abs(sl - entry)
@@ -209,12 +213,16 @@ def check_trades():
             send_all(msg)
             print("SL hit: " + name)
             # Auto journal
-            import json as j2
             jf = "/root/tradingbot/journal.json"
-            entries = j2.load(open(jf)) if os.path.exists(jf) else []
+            if os.path.exists(jf):
+                with open(jf) as f_j:
+                    entries = json.load(f_j)
+            else:
+                entries = []
             entries.append({"pair":name,"side":signal,"result":"LOSS","pips":"-"+str(round(pips,4)),"note":"Auto - SL Hit","date":now})
             entries = entries[-200:]
-            with open(jf,"w") as f2: j2.dump(entries,f2)
+            with open(jf, "w") as f_j:
+                json.dump(entries, f_j)
 
         else:
             remaining.append(trade)

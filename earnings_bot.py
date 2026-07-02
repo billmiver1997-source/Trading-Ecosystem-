@@ -34,8 +34,8 @@ def send_all(msg):
             requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
                 json={"chat_id": chat_id, "text": msg[:4000]})
             time.sleep(0.1)
-        except:
-            pass
+        except Exception as e:
+            print(f"send_all error {chat_id}: {e}")
 
 def get_earnings():
     try:
@@ -79,7 +79,8 @@ def get_analysis(earnings):
             messages=[{"role":"user","content":"These major companies report earnings today. Write 2-3 simple sentences about what traders should watch and how it might affect markets, USD and risk sentiment. Simple English only.\n\n"+earnings_text}]
         )
         return message.content[0].text
-    except:
+    except Exception as e:
+        print(f"get_analysis error: {e}")
         return ""
 
 def format_message(earnings, analysis):

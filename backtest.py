@@ -40,8 +40,8 @@ def send_all(msg):
             requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
                 json={"chat_id": chat_id, "text": msg[:4000]})
             time.sleep(0.1)
-        except:
-            pass
+        except Exception as e:
+            print(f"send_all error {chat_id}: {e}")
 
 def get_trend_4h(symbol):
     try:
@@ -55,8 +55,8 @@ def get_trend_4h(symbol):
             return "BULL"
         if ema20 < ema50:
             return "BEAR"
-    except:
-        pass
+    except Exception as e:
+        print(f"get_trend_4h error {symbol}: {e}")
     return None
 
 def backtest_pair(name, symbol):

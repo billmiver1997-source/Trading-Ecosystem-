@@ -18,18 +18,12 @@ SESSIONS = [
     {"name": "New York", "emoji": "\U0001f1fa\U0001f1f8", "open": (16,0), "close": (23,0), "color": "🔴"},
 ]
 
-def load_users():
-    if os.path.exists(USERS_FILE):
-        with open(USERS_FILE) as f:
-            return json.load(f)
-    return []
-
 def send_all(msg):
     try:
         requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
             json={"chat_id": NEWS_CHANNEL, "text": msg[:4000]})
-    except:
-        pass
+    except Exception as e:
+        print(f"send_all error: {e}")
 
 def get_session_status(now_hour, now_min):
     active = []

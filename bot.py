@@ -99,7 +99,7 @@ def get_market_overview():
     for name, symbol in pairs.items():
         try:
             df = yf.Ticker(symbol).history(period="5d", interval="1h")
-            if len(df) < 2:
+            if len(df) < 25:
                 continue
             price = df["Close"].iloc[-1]
             change = ((df["Close"].iloc[-1] - df["Close"].iloc[-24]) / df["Close"].iloc[-24]) * 100

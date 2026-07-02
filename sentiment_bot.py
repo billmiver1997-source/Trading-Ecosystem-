@@ -4,7 +4,6 @@ load_dotenv("/root/tradingbot/.env")
 
 import requests
 import json
-import os
 import time
 import anthropic
 from datetime import datetime
@@ -25,8 +24,8 @@ def send_channel(msg):
     try:
         requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
             json={"chat_id": CHANNEL_ID, "text": msg[:4000]})
-    except:
-        pass
+    except Exception as e:
+        print(f"send_channel error: {e}")
 
 
 def get_fear_greed():
@@ -41,35 +40,38 @@ def get_fear_greed():
         elif value >= 25: emoji = "\U0001f534"
         else: emoji = "\U0001f4a5"
         return {"value": value, "classification": classification, "emoji": emoji}
-    except:
+    except Exception as e:
+        print(f"get_fear_greed error: {e}")
         return None
 
 def get_dxy_sentiment():
     try:
         import yfinance as yf
         df = yf.Ticker("DX-Y.NYB").history(period="5d", interval="1h")
-        if len(df) < 2:
+        if len(df) < 25:
             return None
         change = ((df["Close"].iloc[-1] - df["Close"].iloc[-24]) / df["Close"].iloc[-24]) * 100
         if change > 0.3: sentiment = "Bullish \U0001f7e2"
         elif change < -0.3: sentiment = "Bearish \U0001f534"
         else: sentiment = "Neutral \U0001f7e1"
         return {"value": round(df["Close"].iloc[-1], 2), "change": round(change, 2), "sentiment": sentiment}
-    except:
+    except Exception as e:
+        print(f"get_dxy_sentiment error: {e}")
         return None
 
 def get_gold_sentiment():
     try:
         import yfinance as yf
         df = yf.Ticker("GC=F").history(period="5d", interval="1h")
-        if len(df) < 2:
+        if len(df) < 25:
             return None
         change = ((df["Close"].iloc[-1] - df["Close"].iloc[-24]) / df["Close"].iloc[-24]) * 100
         if change > 0.5: sentiment = "Bullish \U0001f7e2"
         elif change < -0.5: sentiment = "Bearish \U0001f534"
         else: sentiment = "Neutral \U0001f7e1"
         return {"value": round(df["Close"].iloc[-1], 2), "change": round(change, 2), "sentiment": sentiment}
-    except:
+    except Exception as e:
+        print(f"get_gold_sentiment error: {e}")
         return None
 
 def get_vix():
@@ -83,7 +85,8 @@ def get_vix():
         elif vix > 20: level = "Elevated \U0001f7e0"
         else: level = "Low/Normal \U0001f7e2"
         return {"value": vix, "level": level}
-    except:
+    except Exception as e:
+        print(f"get_vix error: {e}")
         return None
 
 def get_ai_summary(fg, dxy, gold, vix):
@@ -100,7 +103,8 @@ def get_ai_summary(fg, dxy, gold, vix):
             messages=[{"role":"user","content":"Based on this market sentiment data, write 2-3 simple sentences about overall market mood and what forex/crypto traders should expect. Simple English only.\n\n"+data}]
         )
         return message.content[0].text
-    except:
+    except Exception as e:
+        print(f"get_ai_summary error: {e}")
         return ""
 
 def format_message(fg, dxy, gold, vix, summary):
@@ -109,7 +113,7 @@ def format_message(fg, dxy, gold, vix, summary):
     lines = ["\U0001f9e0 MARKET SENTIMENT\n\U0001f554 " + now + "\n"]
 
     if fg:
-        bar = "\u2588" * (fg["value"] // 10) + "\u2591" * (10 - fg["value"] // 10)
+        bar = "█" * (fg["value"] // 10) + "░" * (10 - fg["value"] // 10)
         lines.append("\U0001f7e1 CRYPTO FEAR & GREED")
         lines.append(fg["emoji"] + " " + str(fg["value"]) + "/100 - " + fg["classification"])
         lines.append("[" + bar + "]")

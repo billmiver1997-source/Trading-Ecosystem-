@@ -4,7 +4,6 @@ load_dotenv("/root/tradingbot/.env")
 
 import requests
 import json
-import os
 import time
 import yfinance as yf
 import anthropic
@@ -63,8 +62,8 @@ def answer_callback(callback_id):
     try:
         requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/answerCallbackQuery",
             json={"callback_query_id": callback_id})
-    except:
-        pass
+    except Exception as e:
+        print(f"answer_callback error: {e}")
 
 def get_updates(offset=None):
     params = {"timeout": 30}
@@ -180,7 +179,8 @@ def get_sentiment():
         else: emoji = "\U0001f534"
         bar = "\u2588"*(value//10)+"\u2591"*(10-value//10)
         return "\U0001f9e0 MARKET SENTIMENT\n\nCrypto Fear & Greed:\n"+emoji+" "+str(value)+"/100 - "+classification+"\n["+bar+"]"
-    except:
+    except Exception as e:
+        print(f"get_sentiment error: {e}")
         return "Sentiment data unavailable."
 
 def get_status():

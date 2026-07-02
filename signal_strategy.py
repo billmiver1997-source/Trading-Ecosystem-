@@ -56,8 +56,8 @@ def get_trend_4h(symbol):
             return "BULL"
         if ema20 < ema50:
             return "BEAR"
-    except:
-        pass
+    except Exception as e:
+        print(f"get_trend_4h error {symbol}: {e}")
     return None
 
 def get_trend_15m(symbol):
@@ -72,8 +72,8 @@ def get_trend_15m(symbol):
             return "BULL"
         if ema20 < ema50:
             return "BEAR"
-    except:
-        pass
+    except Exception as e:
+        print(f"get_trend_15m error {symbol}: {e}")
     return None
 
 def load_last_signals():
@@ -108,7 +108,8 @@ def get_data(symbol):
         if len(df) < 50:
             df = yf.Ticker(symbol).history(period="60d", interval="1h")
         return df
-    except:
+    except Exception as e:
+        print(f"get_data error {symbol}: {e}")
         return None
 
 def find_poi(df, name):
@@ -182,13 +183,14 @@ def find_poi(df, name):
             ob_bear_zone = (round(df["Low"].iloc[-i-1], 5), round(df["High"].iloc[-i-1], 5))
             break
 
-    # FVG
+    # FVG - separate loops so both zones can be found independently
     fvg_bull_zone = None
     fvg_bear_zone = None
     for i in range(2, min(10, len(df))):
         if df["Low"].iloc[-i] > df["High"].iloc[-i-2]:
             fvg_bull_zone = (round(df["High"].iloc[-i-2], 5), round(df["Low"].iloc[-i], 5))
             break
+    for i in range(2, min(10, len(df))):
         if df["High"].iloc[-i] < df["Low"].iloc[-i-2]:
             fvg_bear_zone = (round(df["High"].iloc[-i], 5), round(df["Low"].iloc[-i-2], 5))
             break

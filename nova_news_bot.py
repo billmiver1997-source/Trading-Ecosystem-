@@ -24,7 +24,6 @@ MAIN_MENU = ReplyKeyboardMarkup([
 
 KEYWORDS = {
     "ukraine": ["ukraine","zelensky","kyiv","kharkiv","donbas","russia ukraine","war ukraine","ceasefire ukraine","zelenskyy","ukraine war","nato ukraine"],
-        "greece": "Σύνοψε αυτές τις ειδήσεις. Κράτα μόνο όσες αφορούν την Ελλάδα: ελληνική πολιτική, επενδύσεις, χρηματιστήριο Αθηνών, εμπόριο, γεωπολιτικά Ελλάδας, επιχειρηματικότητα. Παράλειψε ό,τι δεν αφορά την Ελλάδα. Γράψε στα Ελληνικά. 5-8 σύντομες παράγραφοι με emoji.",
     "finance": ["fed","rate","inflation","gdp","central bank","ecb","boe","interest rate","recession","bond","yield","dollar","forex","currency","gold","oil","crypto","bitcoin","market rally","market crash","stock"],
     "geopolitics": ["trump","election","nato","sanctions","iran","israel","china","taiwan","russia","war","attack","missile","nuclear","coup","president","government","diplomacy","treaty"],
     "markets": ["trade","tariff","import","export","supply chain","commodity","wto","imf","world bank","gdp growth","economic growth","manufacturing","retail","consumer","employment","jobs"]
@@ -107,7 +106,8 @@ def get_news(category):
                             headlines.append(title)
                 if len(headlines) >= 10:
                     break
-        except:
+        except Exception as e:
+            print(f"Feed parse error {feed_url}: {e}")
             continue
     return headlines[:10]
 

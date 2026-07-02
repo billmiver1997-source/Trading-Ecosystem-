@@ -90,14 +90,18 @@ def get_calendar():
 def get_analysis(events):
     if not events:
         return ""
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    events_text = "\n".join([e["time"]+" "+e["currency"]+" "+e["title"]+" Forecast:"+e["forecast"]+" Previous:"+e["previous"] for e in events])
-    message = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=500,
-        messages=[{"role":"user","content":"You are a forex analyst. Look at these economic events for today and write 3-4 simple sentences about what traders should watch. Which pairs will move most? Simple English only.\n\nEvents:\n"+events_text}]
-    )
-    return message.content[0].text
+    try:
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        events_text = "\n".join([e["time"]+" "+e["currency"]+" "+e["title"]+" Forecast:"+e["forecast"]+" Previous:"+e["previous"] for e in events])
+        message = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=500,
+            messages=[{"role":"user","content":"You are a forex analyst. Look at these economic events for today and write 3-4 simple sentences about what traders should watch. Which pairs will move most? Simple English only.\n\nEvents:\n"+events_text}]
+        )
+        return message.content[0].text
+    except Exception as e:
+        print(f"get_analysis error: {e}")
+        return ""
 
 def format_message(events, analysis):
     tz = pytz.timezone("Europe/Athens")
