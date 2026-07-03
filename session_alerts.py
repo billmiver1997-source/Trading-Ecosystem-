@@ -21,7 +21,7 @@ SESSIONS = [
 def send_all(msg):
     try:
         r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
-            json={"chat_id": NEWS_CHANNEL, "text": msg[:4000]})
+            json={"chat_id": NEWS_CHANNEL, "text": msg[:4000]}, timeout=10)
         r.raise_for_status()
     except Exception as e:
         print(f"send_all error: {e}")

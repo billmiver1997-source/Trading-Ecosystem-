@@ -93,7 +93,7 @@ def send_channel(msg):
     try:
         for i in range(0, len(msg), 4000):
             r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
-                json={"chat_id": CHANNEL_ID, "text": msg[i:i+4000]})
+                json={"chat_id": CHANNEL_ID, "text": msg[i:i+4000]}, timeout=10)
             r.raise_for_status()
             time.sleep(0.5)
     except Exception as e:

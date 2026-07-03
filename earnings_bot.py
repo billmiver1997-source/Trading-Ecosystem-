@@ -35,7 +35,7 @@ def send_all(msg):
     for chat_id in load_users():
         try:
             requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
-                json={"chat_id": chat_id, "text": msg[:4000]})
+                json={"chat_id": chat_id, "text": msg[:4000]}, timeout=10)
             time.sleep(0.1)
         except Exception as e:
             print(f"send_all error {chat_id}: {e}")

@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv("/root/tradingbot/.env")
 
+import random
 import requests
 import anthropic
 import feedparser
@@ -81,7 +82,6 @@ def get_news(category):
             "https://feeds.skynews.com/feeds/rss/world.xml"
         ]
     headlines = []
-    import random
     for feed_url in feeds:
         try:
             feed = feedparser.parse(feed_url)

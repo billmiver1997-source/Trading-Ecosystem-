@@ -63,7 +63,7 @@ def get_trend_4h(symbol):
 def get_trend_15m(symbol):
     try:
         df = yf.Ticker(symbol).history(period="5d", interval="15m")
-        if len(df) < 20:
+        if len(df) < 50:  # EMA50 needs at least 50 candles to be meaningful
             return None
         close = df["Close"]
         ema20 = close.ewm(span=20).mean().iloc[-1]
@@ -97,7 +97,7 @@ def save_last_signals(data):
 def send_signal(msg):
     try:
         r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
-            json={"chat_id": SIGNALS_CHANNEL, "text": msg[:4000]})
+            json={"chat_id": SIGNALS_CHANNEL, "text": msg[:4000]}, timeout=10)
         r.raise_for_status()
     except Exception as e:
         print("Send error: "+str(e))

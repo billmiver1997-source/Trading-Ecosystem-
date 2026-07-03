@@ -26,7 +26,7 @@ def send_channel(msg):
     CHANNEL_ID = os.getenv("TELEGRAM_NEWS_CHANNEL")
     try:
         r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
-            json={"chat_id": CHANNEL_ID, "text": msg[:4000]})
+            json={"chat_id": CHANNEL_ID, "text": msg[:4000]}, timeout=10)
         r.raise_for_status()
     except Exception as e:
         print(f"send_channel error: {e}")

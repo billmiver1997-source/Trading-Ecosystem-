@@ -102,7 +102,7 @@ def save_profile(user_id, username, first_name):
 def answer_callback(callback_id):
     try:
         requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/answerCallbackQuery",
-            json={"callback_query_id": callback_id})
+            json={"callback_query_id": callback_id}, timeout=5)
     except Exception as e:
         print(f"answer_callback error: {e}")
 
@@ -123,14 +123,15 @@ def send_message(chat_id, text, reply_markup=None):
     if reply_markup:
         payload["reply_markup"] = json.dumps(reply_markup)
     try:
-        requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage", json=payload)
+        r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage", json=payload, timeout=10)
+        r.raise_for_status()
     except Exception as e:
         print(f"send_message error to {chat_id}: {e}")
 
 def send_typing(chat_id):
     try:
         requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendChatAction",
-            json={"chat_id": chat_id, "action": "typing"})
+            json={"chat_id": chat_id, "action": "typing"}, timeout=5)
     except Exception as e:
         print(f"send_typing error: {e}")
 

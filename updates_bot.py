@@ -15,8 +15,9 @@ ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY")
 
 def send(msg):
     try:
-        requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
-            json={"chat_id": CHANNEL_ID, "text": msg[:4000]})
+        r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
+            json={"chat_id": CHANNEL_ID, "text": msg[:4000]}, timeout=10)
+        r.raise_for_status()
         print("Sent!")
     except Exception as e:
         print("Error: "+str(e))
