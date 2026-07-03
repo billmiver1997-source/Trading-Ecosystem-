@@ -21,8 +21,11 @@ logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s
 
 def load_profiles():
     if os.path.exists(PROFILES_FILE):
-        with open(PROFILES_FILE) as f:
-            return json.load(f)
+        try:
+            with open(PROFILES_FILE) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, ValueError, OSError) as e:
+            print(f"load_profiles error: {e}")
     return {}
 
 def save_profile(user_id, username, first_name):
@@ -34,8 +37,13 @@ def save_profile(user_id, username, first_name):
             "first_name": first_name or "",
             "joined": datetime.now(tz).strftime("%d/%m/%Y %H:%M")
         }
-        with open(PROFILES_FILE, "w") as f:
-            json.dump(profiles, f)
+        tmp = PROFILES_FILE + '.tmp'
+        try:
+            with open(tmp, 'w') as f:
+                json.dump(profiles, f)
+            os.replace(tmp, PROFILES_FILE)
+        except Exception as e:
+            print(f"save_profile error: {e}")
 
 def get_welcome(name=""):
     greeting = f"Hey {name}! \U0001f44b" if name else "Hey! \U0001f44b"

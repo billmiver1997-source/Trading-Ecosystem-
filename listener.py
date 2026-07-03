@@ -75,8 +75,11 @@ def save_users(users):
 
 def load_profiles():
     if os.path.exists(PROFILES_FILE):
-        with open(PROFILES_FILE) as f:
-            return json.load(f)
+        try:
+            with open(PROFILES_FILE) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, ValueError, OSError) as e:
+            print(f"load_profiles error: {e}")
     return {}
 
 def save_profile(user_id, username, first_name):
@@ -88,8 +91,13 @@ def save_profile(user_id, username, first_name):
             "first_name": first_name or "",
             "joined": datetime.now(tz).strftime("%d/%m/%Y %H:%M")
         }
-        with open(PROFILES_FILE, "w") as f:
-            json.dump(profiles, f)
+        tmp = PROFILES_FILE + '.tmp'
+        try:
+            with open(tmp, 'w') as f:
+                json.dump(profiles, f)
+            os.replace(tmp, PROFILES_FILE)
+        except Exception as e:
+            print(f"save_profile error: {e}")
 
 def answer_callback(callback_id):
     try:
@@ -741,12 +749,18 @@ def handle_message(chat_id, text, username, first_name=""):
             last_signals_file = "/root/tradingbot/last_signals_smc.json"
             stats = {"wins":0,"losses":0}
             if os.path.exists(stats_file):
-                with open(stats_file) as f:
-                    stats = json.load(f)
+                try:
+                    with open(stats_file) as f:
+                        stats = json.load(f)
+                except (json.JSONDecodeError, ValueError, OSError) as e:
+                    print(f"signal history stats JSON error: {e}")
             last_signals = {}
             if os.path.exists(last_signals_file):
-                with open(last_signals_file) as f:
-                    last_signals = json.load(f)
+                try:
+                    with open(last_signals_file) as f:
+                        last_signals = json.load(f)
+                except (json.JSONDecodeError, ValueError, OSError) as e:
+                    print(f"signal history last_signals JSON error: {e}")
             total = stats["wins"]+stats["losses"]
             wr = round((stats["wins"]/total)*100,1) if total > 0 else 0
             lines_h = ["📜 SIGNAL HISTORY"]

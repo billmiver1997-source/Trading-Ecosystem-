@@ -61,7 +61,6 @@ def main():
 
             hour = now.hour
             minute = now.minute
-            key = now.strftime("%Y-%m-%d-%H")
 
             for s in SESSIONS:
                 oh, om = s["open"]
