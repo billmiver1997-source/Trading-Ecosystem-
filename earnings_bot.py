@@ -24,8 +24,11 @@ IMPORTANT_STOCKS = [
 
 def load_users():
     if os.path.exists(USERS_FILE):
-        with open(USERS_FILE) as f:
-            return json.load(f)
+        try:
+            with open(USERS_FILE) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"load_users error: {e}")
     return []
 
 def send_all(msg):

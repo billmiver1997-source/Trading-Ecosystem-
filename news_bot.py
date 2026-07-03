@@ -92,8 +92,9 @@ def create_report(headlines):
 def send_channel(msg):
     try:
         for i in range(0, len(msg), 4000):
-            requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
+            r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
                 json={"chat_id": CHANNEL_ID, "text": msg[i:i+4000]})
+            r.raise_for_status()
             time.sleep(0.5)
     except Exception as e:
         print("Send error: "+str(e))

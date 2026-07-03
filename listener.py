@@ -63,8 +63,13 @@ def load_users():
     return []
 
 def save_users(users):
-    with open(USERS_FILE, "w") as f:
-        json.dump(users, f)
+    tmp = USERS_FILE + '.tmp'
+    try:
+        with open(tmp, 'w') as f:
+            json.dump(users, f)
+        os.replace(tmp, USERS_FILE)
+    except Exception as e:
+        print(f"save_users error: {e}")
 
 def answer_callback(callback_id):
     try:
@@ -545,11 +550,16 @@ def handle_message(chat_id, text, username):
             lots = float([p for p in parts if p.startswith("LOTS:")][0].replace("LOTS:",""))
             trades = []
             if os.path.exists(port_file):
-                with open(port_file) as f:
-                    trades = json.load(f)
+                try:
+                    with open(port_file) as f:
+                        trades = json.load(f)
+                except (json.JSONDecodeError, ValueError) as e:
+                    print(f"Portfolio JSON error: {e}")
             trades.append({"pair":pair,"side":side,"entry":entry,"sl":sl,"tp":tp,"lots":lots})
-            with open(port_file,"w") as f:
-                json.dump(trades,f)
+            _tmp = port_file + '.tmp'
+            with open(_tmp, 'w') as f:
+                json.dump(trades, f)
+            os.replace(_tmp, port_file)
             send_message(chat_id, "💼 Trade added!\n\n"+pair+" "+side+" @ "+str(entry)+"\nSL: "+str(sl)+" | TP: "+str(tp)+"\nLots: "+str(lots), main_menu())
         except Exception as e:
             print(f"Portfolio add error: {e}")
@@ -561,8 +571,12 @@ def handle_message(chat_id, text, username):
             if not os.path.exists(journal_file):
                 send_message(chat_id, "📓 TRADE JOURNAL\n\nNo entries yet.\n\nAdd entry:\nJOURNAL: EURUSD BUY WIN +50pips Good entry at support", main_menu())
             else:
-                with open(journal_file) as f:
-                    entries = json.load(f)
+                try:
+                    with open(journal_file) as f:
+                        entries = json.load(f)
+                except (json.JSONDecodeError, ValueError) as e:
+                    print(f"Journal read error: {e}")
+                    entries = []
                 if not entries:
                     send_message(chat_id, "📓 No journal entries yet.", main_menu())
                     return
@@ -585,11 +599,16 @@ def handle_message(chat_id, text, username):
             note = " ".join(parts[4:]).lower() if len(parts) > 4 else ""
             entries = []
             if os.path.exists(journal_file):
-                with open(journal_file) as f:
-                    entries = json.load(f)
+                try:
+                    with open(journal_file) as f:
+                        entries = json.load(f)
+                except (json.JSONDecodeError, ValueError) as e:
+                    print(f"Journal JSON error: {e}")
             entries.append({"pair":pair,"side":side,"result":result,"pips":pips,"note":note,"date":datetime.now().strftime("%d/%m/%Y")})
-            with open(journal_file,"w") as f:
-                json.dump(entries,f)
+            _tmp = journal_file + '.tmp'
+            with open(_tmp, 'w') as f:
+                json.dump(entries, f)
+            os.replace(_tmp, journal_file)
             send_message(chat_id, "📓 Journal entry added!", main_menu())
         except Exception as e:
             print(f"Journal add error: {e}")
@@ -601,8 +620,12 @@ def handle_message(chat_id, text, username):
             if not os.path.exists(ib_file):
                 send_message(chat_id, "💰 IB TRACKER\n\nNo clients yet.\n\nAdd a client:\nCLIENT: John BROKER:puprime LOTS:50 GOLD:10", main_menu())
             else:
-                with open(ib_file) as f:
-                    clients = json.load(f)
+                try:
+                    with open(ib_file) as f:
+                        clients = json.load(f)
+                except (json.JSONDecodeError, ValueError) as e:
+                    print(f"IB clients JSON error: {e}")
+                    clients = []
                 if not clients:
                     send_message(chat_id, "💰 No clients yet.", main_menu())
                 else:
@@ -633,8 +656,11 @@ def handle_message(chat_id, text, username):
             gold = float([p for p in parts if p.startswith("GOLD:")][0].replace("GOLD:","")) if any(p.startswith("GOLD:") for p in parts) else 0
             clients = []
             if os.path.exists(ib_file):
-                with open(ib_file) as f:
-                    clients = json.load(f)
+                try:
+                    with open(ib_file) as f:
+                        clients = json.load(f)
+                except (json.JSONDecodeError, ValueError) as e:
+                    print(f"IB clients JSON error: {e}")
             existing = [c for c in clients if c["name"] == name]
             if existing:
                 existing[0]["lots"] = lots
@@ -642,8 +668,10 @@ def handle_message(chat_id, text, username):
                 existing[0]["broker"] = broker
             else:
                 clients.append({"name":name,"broker":broker,"lots":lots,"gold":gold})
-            with open(ib_file,"w") as f:
-                json.dump(clients,f)
+            _tmp = ib_file + '.tmp'
+            with open(_tmp, 'w') as f:
+                json.dump(clients, f)
+            os.replace(_tmp, ib_file)
             send_message(chat_id, "👤 Client "+name+" saved!", main_menu())
         except Exception as e:
             print(f"IB client add error: {e}")

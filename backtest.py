@@ -30,8 +30,11 @@ PAIRS = {
 
 def load_users():
     if os.path.exists(USERS_FILE):
-        with open(USERS_FILE) as f:
-            return json.load(f)
+        try:
+            with open(USERS_FILE) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"load_users error: {e}")
     return []
 
 def send_all(msg):
@@ -157,7 +160,7 @@ def run_backtest():
 
     best = results[0]
     lines.append("\n🎯 Best: "+best["name"]+" ("+str(best["winrate"])+"% | "+str(best["signals"])+" signals)")
-    lines.append("Strategy: SMC + EMA200 + MACD + HTF 4H | Score>=5 | R:R 1:3")
+    lines.append("Strategy: SMC + EMA200 + MACD + HTF 4H | Score>=4/4 | R:R 1:3")
 
     send_all("\n".join(lines))
     print("Backtest report sent!")
