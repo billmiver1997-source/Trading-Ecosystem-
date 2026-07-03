@@ -15,7 +15,9 @@ from datetime import datetime
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
 ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
 USERS_FILE = "/root/tradingbot/users.json"
+PROFILES_FILE = "/root/tradingbot/user_profiles.json"
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+OWNER_ID = "8626233751"
 
 SYMBOLS = {
     "USD/CHF": "USDCHF=X", "AUD/USD": "AUDUSD=X", "EUR/USD": "EURUSD=X",
@@ -70,6 +72,24 @@ def save_users(users):
         os.replace(tmp, USERS_FILE)
     except Exception as e:
         print(f"save_users error: {e}")
+
+def load_profiles():
+    if os.path.exists(PROFILES_FILE):
+        with open(PROFILES_FILE) as f:
+            return json.load(f)
+    return {}
+
+def save_profile(user_id, username, first_name):
+    profiles = load_profiles()
+    if str(user_id) not in profiles:
+        tz = pytz.timezone("Europe/Athens")
+        profiles[str(user_id)] = {
+            "username": username or "",
+            "first_name": first_name or "",
+            "joined": datetime.now(tz).strftime("%d/%m/%Y %H:%M")
+        }
+        with open(PROFILES_FILE, "w") as f:
+            json.dump(profiles, f)
 
 def answer_callback(callback_id):
     try:
@@ -260,15 +280,15 @@ def set_commands():
             {"command": "sentiment", "description": "Market sentiment"},
             {"command": "status", "description": "Trading status & open trades"},
             {"command": "links", "description": "Our social links"},
+            {"command": "stats", "description": "Bot statistics (admin only)"},
         ]
     })
 
-def handle_message(chat_id, text, username):
+def handle_message(chat_id, text, username, first_name=""):
     text = text.strip()
     text_lower = text.lower()
 
     if text_lower in ["/start", "start"] or text_lower.startswith("/start@"):
-        # Lock prevents duplicate appends when two new users /start simultaneously
         lock_path = USERS_FILE + ".lock"
         with open(lock_path, "w") as _lf:
             fcntl.flock(_lf, fcntl.LOCK_EX)
@@ -279,7 +299,22 @@ def handle_message(chat_id, text, username):
                     save_users(users)
             finally:
                 fcntl.flock(_lf, fcntl.LOCK_UN)
+        save_profile(chat_id, username, first_name)
         send_message(chat_id, WELCOME, main_menu())
+
+    elif text_lower == "/stats":
+        if str(chat_id) == OWNER_ID:
+            profiles = load_profiles()
+            total = len(profiles)
+            users = load_users()
+            lines = ["📊 BOT STATS\n", f"👥 Unique users: {total}", f"📋 In broadcast list: {len(users)}\n", "🕐 Last 10 joined:"]
+            items = list(profiles.items())[-10:]
+            for uid, data in reversed(items):
+                uname = "@"+data["username"] if data["username"] else data["first_name"] or f"ID:{uid}"
+                lines.append(f"• {uname} | {data['joined']}")
+            send_message(chat_id, "\n".join(lines), main_menu())
+        else:
+            send_message(chat_id, "❌ Not authorized.", main_menu())
 
 
     elif text_lower in ["/menu", "\U0001f519 back to menu"]:
@@ -770,8 +805,9 @@ def main():
                 chat_id = str(msg.get("chat", {}).get("id", ""))
                 text = msg.get("text", "")
                 username = msg.get("from", {}).get("username", "")
+                first_name = msg.get("from", {}).get("first_name", "")
                 if text and chat_id:
-                    handle_message(chat_id, text, username)
+                    handle_message(chat_id, text, username, first_name)
                 callback = update.get("callback_query", {})
                 if callback:
                     cb_chat_id = str(callback.get("message", {}).get("chat", {}).get("id", ""))

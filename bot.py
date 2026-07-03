@@ -4,6 +4,7 @@ load_dotenv("/root/tradingbot/.env")
 
 import asyncio
 import logging
+import json
 import anthropic
 import yfinance as yf
 import pytz
@@ -15,7 +16,26 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, Con
 TOKEN = os.getenv("TELEGRAM_TOKEN_MAIN")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 OWNER_ID = 8626233751
+PROFILES_FILE = "/root/tradingbot/user_profiles.json"
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
+
+def load_profiles():
+    if os.path.exists(PROFILES_FILE):
+        with open(PROFILES_FILE) as f:
+            return json.load(f)
+    return {}
+
+def save_profile(user_id, username, first_name):
+    profiles = load_profiles()
+    if str(user_id) not in profiles:
+        tz = pytz.timezone("Europe/Athens")
+        profiles[str(user_id)] = {
+            "username": username or "",
+            "first_name": first_name or "",
+            "joined": datetime.now(tz).strftime("%d/%m/%Y %H:%M")
+        }
+        with open(PROFILES_FILE, "w") as f:
+            json.dump(profiles, f)
 
 def get_welcome(name=""):
     greeting = f"Hey {name}! \U0001f44b" if name else "Hey! \U0001f44b"
@@ -148,6 +168,7 @@ def get_education(topic):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     name = user.first_name or ""
+    save_profile(user.id, user.username or "", name)
     await update.message.reply_text(get_welcome(name), reply_markup=main_menu())
     try:
         username = "@"+user.username if user.username else "no username"
@@ -301,8 +322,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("Choose an option below \U0001f447", reply_markup=main_menu())
 
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != OWNER_ID:
+        await update.message.reply_text("❌ Not authorized.")
+        return
+    profiles = load_profiles()
+    total = len(profiles)
+    lines = ["📊 BOT STATS\n", f"👥 Unique users: {total}\n", "🕐 Last 10 joined:"]
+    items = list(profiles.items())[-10:]
+    for uid, data in reversed(items):
+        uname = "@"+data["username"] if data["username"] else data["first_name"] or f"ID:{uid}"
+        lines.append(f"• {uname} | {data['joined']}")
+    await update.message.reply_text("\n".join(lines), reply_markup=main_menu())
+
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("stats", stats))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
 if __name__ == "__main__":
