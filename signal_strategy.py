@@ -6,7 +6,6 @@ import fcntl
 import yfinance as yf
 import requests
 import pandas as pd
-import numpy as np
 import json
 import time
 from datetime import datetime
@@ -88,14 +87,18 @@ def load_last_signals():
 
 def save_last_signals(data):
     tmp = LAST_SIGNAL_FILE + '.tmp'
-    with open(tmp, 'w') as f:
-        json.dump(data, f)
-    os.replace(tmp, LAST_SIGNAL_FILE)
+    try:
+        with open(tmp, 'w') as f:
+            json.dump(data, f)
+        os.replace(tmp, LAST_SIGNAL_FILE)
+    except Exception as e:
+        print(f"save_last_signals error: {e}")
 
 def send_signal(msg):
     try:
-        requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
+        r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
             json={"chat_id": SIGNALS_CHANNEL, "text": msg[:4000]})
+        r.raise_for_status()
     except Exception as e:
         print("Send error: "+str(e))
 
@@ -136,12 +139,12 @@ def find_poi(df, name):
     if atr_pct < min_atr:
         return None
 
-    # Candle body strength (last closed candle)
-    candle_range = high.iloc[-1] - low.iloc[-1]
-    candle_body = abs(close.iloc[-1] - df["Open"].iloc[-1])
+    # Candle body strength (last CLOSED candle — iloc[-1] is still forming)
+    candle_range = high.iloc[-2] - low.iloc[-2]
+    candle_body = abs(close.iloc[-2] - df["Open"].iloc[-2])
     body_ratio = candle_body / candle_range if candle_range > 0 else 0
-    is_bull_body = close.iloc[-1] > df["Open"].iloc[-1] and body_ratio > 0.5
-    is_bear_body = close.iloc[-1] < df["Open"].iloc[-1] and body_ratio > 0.5
+    is_bull_body = close.iloc[-2] > df["Open"].iloc[-2] and body_ratio > 0.5
+    is_bear_body = close.iloc[-2] < df["Open"].iloc[-2] and body_ratio > 0.5
 
     # EMAs
     ema20 = close.ewm(span=20).mean()
@@ -362,6 +365,7 @@ def get_news_blocked_currencies():
             "https://www.investing.com/economic-calendar/Service/getCalendarFilteredData",
             headers=headers, data=payload, timeout=10
         )
+        r.raise_for_status()
         soup = BeautifulSoup(r.json().get("data", ""), "html.parser")
         blocked = set()
         for row in soup.find_all("tr", id=lambda x: x and x.startswith("eventRowId_")):
@@ -394,7 +398,7 @@ def get_min_score(name):
         if not os.path.exists(journal_file):
             return 5
         # Shared read lock prevents reading a torn file during a concurrent write
-        with open(journal_lock, "w") as _lf:
+        with open(journal_lock, "a") as _lf:
             fcntl.flock(_lf, fcntl.LOCK_SH)
             try:
                 with open(journal_file) as f:

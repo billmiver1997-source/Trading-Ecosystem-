@@ -3,7 +3,6 @@ from dotenv import load_dotenv
 load_dotenv("/root/tradingbot/.env")
 
 import requests
-import json
 import time
 import anthropic
 from datetime import datetime
@@ -11,14 +10,7 @@ from bs4 import BeautifulSoup
 import pytz
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
-USERS_FILE = "/root/tradingbot/users.json"
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-
-def load_users():
-    if os.path.exists(USERS_FILE):
-        with open(USERS_FILE) as f:
-            return json.load(f)
-    return []
 
 def send_channel(msg):
     CHANNEL_ID = os.getenv("TELEGRAM_NEWS_CHANNEL")
@@ -40,6 +32,7 @@ def get_calendar():
         today = datetime.now(tz_athens).strftime("%Y-%m-%d")
         payload = {"dateFrom": today, "dateTo": today, "importance[]": ["2", "3"]}
         r = requests.post("https://www.investing.com/economic-calendar/Service/getCalendarFilteredData", headers=headers, data=payload, timeout=15)
+        r.raise_for_status()
         data = r.json()
         html = data.get("data","")
         soup = BeautifulSoup(html, "html.parser")

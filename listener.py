@@ -6,6 +6,7 @@ import fcntl
 import requests
 import json
 import time
+import pandas as pd
 import yfinance as yf
 import anthropic
 import pytz
@@ -76,11 +77,16 @@ def get_updates(offset=None):
     params = {"timeout": 30}
     if offset is not None:  # 0 is a valid offset — do not treat it as falsy
         params["offset"] = offset
-    r = requests.get("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/getUpdates", params=params, timeout=35)
-    return r.json()
+    try:
+        r = requests.get("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/getUpdates", params=params, timeout=35)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        print(f"get_updates error: {e}")
+        return {"result": []}
 
 def send_message(chat_id, text, reply_markup=None):
-    payload = {"chat_id": chat_id, "text": text[:4000]}
+    payload = {"chat_id": chat_id, "text": text[:4096]}
     if reply_markup:
         payload["reply_markup"] = json.dumps(reply_markup)
     try:
@@ -160,18 +166,33 @@ def get_analysis(pair_name):
         gain = delta.clip(lower=0).rolling(14).mean()
         loss = -delta.clip(upper=0).rolling(14).mean()
         rsi = (100 - (100 / (1 + gain / loss))).iloc[-1]
-        atr = (high - low).rolling(14).mean().iloc[-1]
+        prev_close = close.shift(1)
+        true_range = pd.concat([high-low, (high-prev_close).abs(), (low-prev_close).abs()], axis=1).max(axis=1)
+        atr = true_range.rolling(14).mean().iloc[-1]
         price = close.iloc[-1]
         bb_mid = close.rolling(20).mean().iloc[-1]
-        bb_upper = (bb_mid + 2*close.rolling(20).std()).iloc[-1]
-        bb_lower = (bb_mid - 2*close.rolling(20).std()).iloc[-1]
-        macd = (close.ewm(span=12).mean() - close.ewm(span=26).mean()).iloc[-1]
+        bb_std = close.rolling(20).std().iloc[-1]
+        bb_upper = bb_mid + 2 * bb_std
+        bb_lower = bb_mid - 2 * bb_std
+        macd_line = close.ewm(span=12).mean() - close.ewm(span=26).mean()
+        macd = macd_line.iloc[-1]
+        macd_sig = macd_line.ewm(span=9).mean().iloc[-1]
+        atr_pct = round((atr / price) * 100, 3)
 
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-        prompt = "Expert forex analyst. Plain text only, no markdown. Quick analysis for "+pair_name+". Format: TREND / SIGNAL: BUY or SELL or WAIT / ENTRY / SL / TP / RISK NOTE. Data: Price="+str(round(price,5))+" EMA20="+str(round(ema20,5))+" EMA50="+str(round(ema50,5))+" RSI="+str(round(rsi,1))+" MACD="+str(round(macd,5))+" ATR="+str(round(atr,5))+" BBup="+str(round(bb_upper,5))+" BBlo="+str(round(bb_lower,5))
+        prompt = (
+            "Expert forex analyst. Plain text only, no markdown. "
+            "Timeframe: 15-minute candles (5-day window). "
+            "Pair: "+pair_name+". "
+            "Format: TREND / SIGNAL: BUY or SELL or WAIT / ENTRY / SL / TP / RISK NOTE. "
+            "Data: Price="+str(round(price,5))+" EMA20="+str(round(ema20,5))+" EMA50="+str(round(ema50,5))+
+            " RSI="+str(round(rsi,1))+" MACD="+str(round(macd,5))+" MACD_Signal="+str(round(macd_sig,5))+
+            " ATR="+str(round(atr,5))+" ("+str(atr_pct)+"% of price)"+
+            " BBup="+str(round(bb_upper,5))+" BBlo="+str(round(bb_lower,5))
+        )
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=500,
+            max_tokens=650,
             messages=[{"role":"user","content":prompt}]
         )
         tz = pytz.timezone("Europe/Athens")
@@ -241,7 +262,7 @@ def handle_message(chat_id, text, username):
     text = text.strip()
     text_lower = text.lower()
 
-    if text_lower in ["/start", "start"]:
+    if text_lower in ["/start", "start"] or text_lower.startswith("/start@"):
         # Lock prevents duplicate appends when two new users /start simultaneously
         lock_path = USERS_FILE + ".lock"
         with open(lock_path, "w") as _lf:
@@ -259,9 +280,6 @@ def handle_message(chat_id, text, username):
     elif text_lower in ["/menu", "\U0001f519 back to menu"]:
         send_message(chat_id, "Main menu:", main_menu())
 
-    elif text_lower in ["\U0001f4b1 pairs"]:
-        send_message(chat_id, "Choose a pair for analysis:", pairs_menu())
-
     elif text_lower in ["/links", "\U0001f517 links"]:
         send_message(chat_id, "Our channels & brokers:", links_menu())
 
@@ -276,7 +294,6 @@ def handle_message(chat_id, text, username):
         send_typing(chat_id)
         try:
             from bs4 import BeautifulSoup
-            from datetime import datetime
             tz = pytz.timezone("Europe/Athens")
             today = datetime.now(tz).strftime("%Y-%m-%d")
             now_str = datetime.now(tz).strftime("%d/%m/%Y")
@@ -311,12 +328,12 @@ def handle_message(chat_id, text, username):
             msg += "\n\n📊 Full calendar sent at 07:00 every morning!"
             send_message(chat_id, msg, main_menu())
         except Exception as e:
+            print(f"Calendar handler error: {e}")
             send_message(chat_id, "📅 Economic calendar sent every morning at 07:00!", main_menu())
     elif text_lower in ["🌍 news", "/news"]:
         send_typing(chat_id)
         try:
             import feedparser
-            from datetime import datetime
             tz = pytz.timezone("Europe/Athens")
             now_str = datetime.now(tz).strftime("%d/%m/%Y %H:%M")
             keywords = ["war","attack","fed","rate","inflation","trump","tariff","oil","gold","dollar","ukraine","iran","china","russia","market","crash","rally","ceasefire","ecb","boe","sanctions"]
@@ -335,11 +352,12 @@ def handle_message(chat_id, text, username):
             news_text = "\n".join(headlines[:8])
             message = client.messages.create(
                 model="claude-haiku-4-5-20251001",
-                max_tokens=300,
+                max_tokens=400,
                 messages=[{"role":"user","content":"From these headlines pick the 5 most important for traders. Write each as one short line with an emoji. Then add one sentence summary. Simple English. Plain text.\n\n"+news_text}]
             )
             send_message(chat_id, "📰 LATEST NEWS\n🕔 "+now_str+"\n\n"+message.content[0].text+"\n\n📰 Full news: @tradingNovaNews", main_menu())
         except Exception as e:
+            print(f"News handler error: {e}")
             send_message(chat_id, "🌍 Latest news at @tradingNovaNews", main_menu())
 
     elif text_lower in ["\U0001f4ca analysis", "/analysis"]:
@@ -379,6 +397,8 @@ def handle_message(chat_id, text, username):
             balance = float(parts.get("BALANCE", 0))
             risk_pct = float(parts.get("RISK", 1))
             sl_pips = float(parts.get("SL PIPS", 20))
+            if sl_pips <= 0:
+                raise ValueError("SL pips must be > 0")
             pair = parts.get("PAIR", "EURUSD").upper()
             risk_amount = balance * (risk_pct / 100)
             # Approximate USD pip value per standard lot by instrument type
@@ -406,7 +426,7 @@ def handle_message(chat_id, text, username):
     elif text_lower in ["💥 volatility alert", "/volatility"]:
         send_typing(chat_id)
         try:
-                vlines = ["💥 VOLATILITY REPORT\n"]
+            vlines = ["💥 VOLATILITY REPORT\n"]
             alerts = []
             vpairs = {"EUR/USD":"EURUSD=X","GBP/USD":"GBPUSD=X","XAU/USD":"GC=F","BTC/USD":"BTC-USD","Oil/USD":"CL=F","USD/JPY":"USDJPY=X","USD/CHF":"USDCHF=X","SOL/USD":"SOL-USD","AUD/USD":"AUDUSD=X"}
             for vname, vsymbol in vpairs.items():
@@ -459,9 +479,8 @@ def handle_message(chat_id, text, username):
                     results.append(tf+": "+bias+" | RSI:"+str(round(rsi,1)))
                 agreement = len(set([r.split(":")[1].split("|")[0].strip() for r in results]))
                 overall = "🟢 ALIGNED - Strong signal!" if agreement == 1 else "🟡 MIXED - Wait for alignment"
-                from datetime import datetime as dt2
                 tz = pytz.timezone("Europe/Athens")
-                now = dt2.now(tz).strftime("%d/%m/%Y %H:%M")
+                now = datetime.now(tz).strftime("%d/%m/%Y %H:%M")
                 msg = "📊 MTF ANALYSIS\n"+pair_name+" | "+now+"\n\n"
                 msg += "\n".join(results)
                 msg += "\n\n"+overall
@@ -471,7 +490,6 @@ def handle_message(chat_id, text, username):
 
     elif text_lower in ["💼 portfolio", "/portfolio"]:
         try:
-            yf2 = yf  # already imported at module level
             trades_file = "/root/tradingbot/open_trades.json"
             trades = []
             if os.path.exists(trades_file):
@@ -490,7 +508,7 @@ def handle_message(chat_id, text, username):
                     if not symbol:
                         continue
                     try:
-                        df = yf2.Ticker(symbol).history(period="5d", interval="1h")
+                        df = yf.Ticker(symbol).history(period="5d", interval="1h")
                         price = df["Close"].iloc[-1]
                         entry = t["entry"]
                         # Instrument-specific pip sizes for correct pip display
@@ -569,8 +587,7 @@ def handle_message(chat_id, text, username):
             if os.path.exists(journal_file):
                 with open(journal_file) as f:
                     entries = json.load(f)
-            from datetime import datetime as dt3
-            entries.append({"pair":pair,"side":side,"result":result,"pips":pips,"note":note,"date":dt3.now().strftime("%d/%m/%Y")})
+            entries.append({"pair":pair,"side":side,"result":result,"pips":pips,"note":note,"date":datetime.now().strftime("%d/%m/%Y")})
             with open(journal_file,"w") as f:
                 json.dump(entries,f)
             send_message(chat_id, "📓 Journal entry added!", main_menu())
@@ -622,6 +639,7 @@ def handle_message(chat_id, text, username):
             if existing:
                 existing[0]["lots"] = lots
                 existing[0]["gold"] = gold
+                existing[0]["broker"] = broker
             else:
                 clients.append({"name":name,"broker":broker,"lots":lots,"gold":gold})
             with open(ib_file,"w") as f:
@@ -668,15 +686,16 @@ def handle_message(chat_id, text, username):
                     last_signals = json.load(f)
             total = stats["wins"]+stats["losses"]
             wr = round((stats["wins"]/total)*100,1) if total > 0 else 0
-            from datetime import datetime as dt4
             lines_h = ["📜 SIGNAL HISTORY"]
             lines_h.append("🟢 Wins: "+str(stats["wins"])+" | 🔴 Losses: "+str(stats["losses"])+" | WR: "+str(wr)+"%")
             lines_h.append("Last signals:")
-            for pair, data in list(last_signals.items())[-10:]:
+            tz_athens = pytz.timezone("Europe/Athens")
+            sorted_signals = sorted(last_signals.items(), key=lambda x: x[1].get("time", 0))
+            for pair, data in sorted_signals[-10:]:
                 sig = data.get("signal","")
                 t = data.get("time",0)
                 sig_emoji = "🟢" if sig == "BUY" else "🔴"
-                time_str = dt4.fromtimestamp(t).strftime("%d/%m %H:%M") if t else ""
+                time_str = datetime.fromtimestamp(t, tz=tz_athens).strftime("%d/%m %H:%M") if t else ""
                 lines_h.append(sig_emoji+" "+pair+" "+sig+" | "+time_str)
             send_message(chat_id, "\n".join(lines_h), main_menu())
         except Exception as e:
@@ -708,7 +727,10 @@ def handle_message(chat_id, text, username):
             send_message(chat_id, "Error: "+str(e), main_menu())
 
 def main():
-    set_commands()
+    try:
+        set_commands()
+    except Exception as e:
+        print(f"set_commands error: {e}")
     offset = None
     print("Listener started...")
     while True:
@@ -739,8 +761,11 @@ def main():
                     elif cb_data == "cmd_status":
                         handle_message(cb_chat_id, "📋 status", "")
                     elif cb_data == "open_menu":
-                        requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/editMessageText",
-                            json={"chat_id": cb_chat_id, "message_id": callback.get("message",{}).get("message_id"), "text": WELCOME, "reply_markup": inline_main_menu()})
+                        try:
+                            requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/editMessageText",
+                                json={"chat_id": cb_chat_id, "message_id": callback.get("message",{}).get("message_id"), "text": WELCOME, "reply_markup": inline_main_menu()})
+                        except Exception as e:
+                            print(f"open_menu callback error: {e}")
         except Exception as e:
             print("Error: "+str(e))
             time.sleep(5)

@@ -22,10 +22,12 @@ def load_users():
 def send_channel(msg):
     CHANNEL_ID = os.getenv("TELEGRAM_NEWS_CHANNEL")
     try:
-        requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
+        r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
             json={"chat_id": CHANNEL_ID, "text": msg[:4000]})
+        r.raise_for_status()
     except Exception as e:
         print(f"send_channel error: {e}")
+        raise
 
 
 def get_fear_greed():

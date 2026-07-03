@@ -109,6 +109,8 @@ def get_news(category):
         except Exception as e:
             print(f"Feed parse error {feed_url}: {e}")
             continue
+        if len(headlines) >= 10:
+            break
     return headlines[:10]
 
 def get_ai_summary(headlines, category):

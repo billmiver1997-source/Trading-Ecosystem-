@@ -68,9 +68,10 @@ def collect_news():
                     headlines.append(title)
         except Exception as e:
             print(f"collect_news feed error {feed_url}: {e}")
-    if high_impact:
-        return list(set(high_impact))[:40]
-    return list(set(headlines))[:40]
+    # high-impact headlines first, then general — combining ensures trading-relevant
+    # events aren't dropped when only high-impact ones match
+    combined = list(set(high_impact + headlines))
+    return combined[:40]
 
 def create_report(headlines):
     if not headlines:
@@ -112,7 +113,6 @@ def main():
             # Silence 01:00 - 06:59; sleep until 06:55 to avoid missing the 07:00 window
             if 1 <= hour < 7:
                 print("Silence hours - sleeping...")
-                tz = pytz.timezone("Europe/Athens")
                 _now = datetime.now(tz)
                 _wake = _now.replace(hour=6, minute=55, second=0, microsecond=0)
                 _secs = max(60, (_wake - _now).total_seconds())
@@ -130,8 +130,8 @@ def main():
                     if report:
                         header = SCHEDULE[hour]
                         send_channel(header+"\n🕔 "+now_str+"\n\n"+report)
-                        sent_today[send_key] = True
                         print(f"Sent {hour}:00 update!")
+                sent_today[send_key] = True  # mark attempted regardless to prevent duplicate sends
                 time.sleep(600)
                 continue
 

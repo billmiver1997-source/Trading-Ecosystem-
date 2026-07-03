@@ -48,12 +48,16 @@ PAIR_EMOJIS = {
     "BTC/USD": "\U0001f7e1",
     "SOL/USD": "\U0001f535",
     "DXY": "\U0001f4b5",
+    "USD/JPY": "\U0001f1ef\U0001f1f5",
 }
 
 def load_users():
     if os.path.exists(USERS_FILE):
-        with open(USERS_FILE) as f:
-            return json.load(f)
+        try:
+            with open(USERS_FILE) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, ValueError, OSError) as e:
+            print(f"load_users error: {e}")
     return []
 
 def load_trades():
@@ -68,9 +72,12 @@ def load_trades():
 def save_trades(trades):
     # atomic write prevents partial-write corruption
     tmp = TRADES_FILE + '.tmp'
-    with open(tmp, 'w') as f:
-        json.dump(trades, f)
-    os.replace(tmp, TRADES_FILE)
+    try:
+        with open(tmp, 'w') as f:
+            json.dump(trades, f)
+        os.replace(tmp, TRADES_FILE)
+    except Exception as e:
+        print(f"save_trades error: {e}")
 
 def load_stats():
     if os.path.exists(STATS_FILE):
@@ -83,9 +90,12 @@ def load_stats():
 
 def save_stats(stats):
     tmp = STATS_FILE + '.tmp'
-    with open(tmp, 'w') as f:
-        json.dump(stats, f)
-    os.replace(tmp, STATS_FILE)
+    try:
+        with open(tmp, 'w') as f:
+            json.dump(stats, f)
+        os.replace(tmp, STATS_FILE)
+    except Exception as e:
+        print(f"save_stats error: {e}")
 
 JOURNAL_FILE = "/root/tradingbot/journal.json"
 

@@ -2,10 +2,12 @@ import os
 from dotenv import load_dotenv
 load_dotenv("/root/tradingbot/.env")
 
+import asyncio
 import logging
 import anthropic
 import yfinance as yf
 import pytz
+import pandas as pd
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
@@ -103,7 +105,10 @@ def get_market_overview():
             if len(df) < 25:
                 continue
             price = df["Close"].iloc[-1]
-            change = ((df["Close"].iloc[-1] - df["Close"].iloc[-24]) / df["Close"].iloc[-24]) * 100
+            cutoff = df.index[-1] - pd.Timedelta(hours=24)
+            prev = df["Close"][df.index <= cutoff]
+            prev_price = prev.iloc[-1] if len(prev) > 0 else df["Close"].iloc[-24]
+            change = ((price - prev_price) / prev_price) * 100
             emoji = "\U0001f7e2" if change > 0 else "\U0001f534"
             result.append(emoji+" "+name+": "+str(round(price,4))+" ("+("{:+.2f}".format(change))+"%)")
         except Exception as e:
@@ -114,7 +119,6 @@ def get_market_overview():
     return "\n".join(result)
 
 def get_education(topic):
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     prompts = {
         "forex": "Explain Forex trading for a beginner. Max 200 words. Use emojis. Plain text only.",
         "crypto": "Explain cryptocurrency trading for a beginner. Max 200 words. Use emojis. Plain text only.",
@@ -130,6 +134,7 @@ def get_education(topic):
         "howtostart": "Step by step guide to start trading for a complete beginner. Max 200 words. Use emojis. Plain text only.",
     }
     try:
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=500,
@@ -193,7 +198,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             with open("/root/tradingbot/tmgm_logo.png", "rb") as photo:
                 await context.bot.send_photo(chat_id=update.effective_chat.id, photo=photo, caption=edu_caption, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("TMGM Academy", url="https://www.tmgm.com/en/academy/overview")]]))
-        except Exception:
+        except Exception as e:
+            logging.warning("Education photo send failed: %s", e)
             await update.message.reply_text(edu_caption, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("TMGM Academy", url="https://www.tmgm.com/en/academy/overview")]]))
         await update.message.reply_text("Choose a topic:", reply_markup=edu_menu())
     elif text == "\U0001f4b9 Brokers":
@@ -201,11 +207,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             with open("/root/tradingbot/tmgm_logo.png", "rb") as photo:
                 await context.bot.send_photo(chat_id=update.effective_chat.id, photo=photo, caption=msg, reply_markup=broker_links())
-        except Exception:
+        except Exception as e:
+            logging.warning("Brokers photo send failed: %s", e)
             await update.message.reply_text(msg, reply_markup=broker_links())
     elif text == "\U0001f4ca Market Overview":
         await update.message.reply_text("\U0001f504 Loading...", reply_markup=main_menu())
-        overview = get_market_overview()
+        overview = await asyncio.to_thread(get_market_overview)
         await update.message.reply_text(overview, reply_markup=main_menu())
 
     elif text == "\U0001f4f2 Our Community":
@@ -238,7 +245,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             with open("/root/tradingbot/tmgm_logo.png", "rb") as photo:
                 await context.bot.send_photo(chat_id=update.effective_chat.id, photo=photo, caption=msg, reply_markup=broker_links())
-        except Exception:
+        except Exception as e:
+            logging.warning("TMGM Info photo send failed: %s", e)
             await update.message.reply_text(msg, reply_markup=broker_links())
     elif text == "\U0001f381 What You Get":
         msg = (
@@ -255,40 +263,40 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(msg, reply_markup=broker_links())
     elif text == "\U0001f4d6 Forex Basics":
         await update.message.reply_text("\U0001f504 Loading...", reply_markup=edu_menu())
-        await update.message.reply_text(get_education("forex"), reply_markup=edu_menu())
+        await update.message.reply_text(await asyncio.to_thread(get_education, "forex"), reply_markup=edu_menu())
     elif text == "\U0001f4d6 Crypto Basics":
         await update.message.reply_text("\U0001f504 Loading...", reply_markup=edu_menu())
-        await update.message.reply_text(get_education("crypto"), reply_markup=edu_menu())
+        await update.message.reply_text(await asyncio.to_thread(get_education, "crypto"), reply_markup=edu_menu())
     elif text == "\U0001f4d6 What is CFD?":
         await update.message.reply_text("\U0001f504 Loading...", reply_markup=edu_menu())
-        await update.message.reply_text(get_education("cfd"), reply_markup=edu_menu())
+        await update.message.reply_text(await asyncio.to_thread(get_education, "cfd"), reply_markup=edu_menu())
     elif text == "\U0001f4d6 What is SMC?":
         await update.message.reply_text("\U0001f504 Loading...", reply_markup=edu_menu())
-        await update.message.reply_text(get_education("smc"), reply_markup=edu_menu())
+        await update.message.reply_text(await asyncio.to_thread(get_education, "smc"), reply_markup=edu_menu())
     elif text == "\U0001f4d6 Risk Management":
         await update.message.reply_text("\U0001f504 Loading...", reply_markup=edu_menu())
-        await update.message.reply_text(get_education("risk"), reply_markup=edu_menu())
+        await update.message.reply_text(await asyncio.to_thread(get_education, "risk"), reply_markup=edu_menu())
     elif text == "\U0001f4d6 Indicators Guide":
         await update.message.reply_text("\U0001f504 Loading...", reply_markup=edu_menu())
-        await update.message.reply_text(get_education("indicators"), reply_markup=edu_menu())
+        await update.message.reply_text(await asyncio.to_thread(get_education, "indicators"), reply_markup=edu_menu())
     elif text == "\U0001f4d6 Chart Patterns":
         await update.message.reply_text("\U0001f504 Loading...", reply_markup=edu_menu())
-        await update.message.reply_text(get_education("patterns"), reply_markup=edu_menu())
+        await update.message.reply_text(await asyncio.to_thread(get_education, "patterns"), reply_markup=edu_menu())
     elif text == "\U0001f4d6 Trading Glossary":
         await update.message.reply_text("\U0001f504 Loading...", reply_markup=edu_menu())
-        await update.message.reply_text(get_education("glossary"), reply_markup=edu_menu())
+        await update.message.reply_text(await asyncio.to_thread(get_education, "glossary"), reply_markup=edu_menu())
     elif text == "\U0001f4d6 Crypto Trading":
         await update.message.reply_text("\U0001f504 Loading...", reply_markup=edu_menu())
-        await update.message.reply_text(get_education("cryptotrading"), reply_markup=edu_menu())
+        await update.message.reply_text(await asyncio.to_thread(get_education, "cryptotrading"), reply_markup=edu_menu())
     elif text == "\U0001f4d6 DeFi & Web3":
         await update.message.reply_text("\U0001f504 Loading...", reply_markup=edu_menu())
-        await update.message.reply_text(get_education("defi"), reply_markup=edu_menu())
+        await update.message.reply_text(await asyncio.to_thread(get_education, "defi"), reply_markup=edu_menu())
     elif text == "\U0001f4d6 Trading Psychology":
         await update.message.reply_text("\U0001f504 Loading...", reply_markup=edu_menu())
-        await update.message.reply_text(get_education("psychology"), reply_markup=edu_menu())
+        await update.message.reply_text(await asyncio.to_thread(get_education, "psychology"), reply_markup=edu_menu())
     elif text == "\U0001f4d6 How to Start":
         await update.message.reply_text("\U0001f504 Loading...", reply_markup=edu_menu())
-        await update.message.reply_text(get_education("howtostart"), reply_markup=edu_menu())
+        await update.message.reply_text(await asyncio.to_thread(get_education, "howtostart"), reply_markup=edu_menu())
 
     else:
         await update.message.reply_text("Choose an option below \U0001f447", reply_markup=main_menu())

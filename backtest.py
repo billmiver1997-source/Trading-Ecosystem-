@@ -76,6 +76,7 @@ def backtest_pair(name, symbol):
     delta = close.diff()
     gain = delta.clip(lower=0).rolling(14).mean()
     loss = -delta.clip(upper=0).rolling(14).mean()
+    loss = loss.replace(0, 1e-10)  # avoid div-by-zero on all-green windows
     rsi = 100 - (100 / (1 + gain / loss))
     tr = pd.concat([high-low,(high-close.shift()).abs(),(low-close.shift()).abs()],axis=1).max(axis=1)
     atr = tr.rolling(14).mean()
@@ -97,23 +98,21 @@ def backtest_pair(name, symbol):
         if 50 < rsi.iloc[i] < 70: sb += 1
         if 30 < rsi.iloc[i] < 50: se += 1
 
-        if sb >= 5 and trend_4h == "BULL":
+        if sb >= 4 and trend_4h == "BULL":
             tp = p + a*3; sl2 = p - a*1.5
             resolved = False
             for j in range(i+1, min(i+60, len(df))):
-                pr = close.iloc[j]
-                if pr >= tp: wins+=1; total_pips+=abs(tp-p); resolved=True; break
-                if pr <= sl2: losses+=1; total_pips-=abs(p-sl2); resolved=True; break
+                if high.iloc[j] >= tp: wins+=1; total_pips+=abs(tp-p); resolved=True; break
+                if low.iloc[j] <= sl2: losses+=1; total_pips-=abs(p-sl2); resolved=True; break
             if not resolved:
                 timeouts += 1  # trade expired without hitting TP or SL
 
-        elif se >= 5 and trend_4h == "BEAR":
+        elif se >= 4 and trend_4h == "BEAR":
             tp = p - a*3; sl2 = p + a*1.5
             resolved = False
             for j in range(i+1, min(i+60, len(df))):
-                pr = close.iloc[j]
-                if pr <= tp: wins+=1; total_pips+=abs(p-tp); resolved=True; break
-                if pr >= sl2: losses+=1; total_pips-=abs(sl2-p); resolved=True; break
+                if low.iloc[j] <= tp: wins+=1; total_pips+=abs(p-tp); resolved=True; break
+                if high.iloc[j] >= sl2: losses+=1; total_pips-=abs(sl2-p); resolved=True; break
             if not resolved:
                 timeouts += 1  # trade expired without hitting TP or SL
 
@@ -142,7 +141,8 @@ def run_backtest():
     results.sort(key=lambda x: x["winrate"], reverse=True)
     total_w = sum(r["wins"] for r in results)
     total_l = sum(r["losses"] for r in results)
-    total = total_w + total_l
+    total_t = sum(r.get("timeouts", 0) for r in results)
+    total = total_w + total_l + total_t
     overall_wr = round(total_w/total*100, 1) if total > 0 else 0
 
     lines = ["📊 BACKTEST REPORT (60d — SMC+EMA+HTF)\n🕔 "+now+"\n"]
