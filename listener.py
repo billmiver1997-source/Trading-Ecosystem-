@@ -19,6 +19,14 @@ PROFILES_FILE = "/root/tradingbot/user_profiles.json"
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 OWNER_ID = "8626233751"
 
+_anthropic_client = None
+
+def _get_anthropic():
+    global _anthropic_client
+    if _anthropic_client is None:
+        _anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    return _anthropic_client
+
 SYMBOLS = {
     "USD/CHF": "USDCHF=X", "AUD/USD": "AUDUSD=X", "EUR/USD": "EURUSD=X",
     "EUR/CHF": "EURCHF=X", "GBP/USD": "GBPUSD=X", "USD/CAD": "USDCAD=X",
@@ -136,11 +144,13 @@ def send_typing(chat_id):
         print(f"send_typing error: {e}")
 
 def inline_main_menu():
-    return json.dumps({"inline_keyboard": [
+    # Return a plain dict — requests.post(json=...) handles serialization itself;
+    # wrapping in json.dumps() would double-encode this as a string, breaking Telegram.
+    return {"inline_keyboard": [
         [{"text": "📊 Analysis", "callback_data": "cmd_analysis"}, {"text": "🧠 Sentiment", "callback_data": "cmd_sentiment"}],
         [{"text": "📅 Calendar", "callback_data": "cmd_calendar"}, {"text": "📋 Status", "callback_data": "cmd_status"}],
-            [{"text": "🌍 News", "callback_data": "cmd_news"}],
-    ]})
+        [{"text": "🌍 News", "callback_data": "cmd_news"}],
+    ]}
 
 def main_menu():
     return {
@@ -199,6 +209,7 @@ def get_analysis(pair_name):
         delta = close.diff()
         gain = delta.clip(lower=0).rolling(14).mean()
         loss = -delta.clip(upper=0).rolling(14).mean()
+        loss = loss.replace(0, 1e-10)  # prevent NaN RSI on all-flat windows
         rsi = (100 - (100 / (1 + gain / loss))).iloc[-1]
         prev_close = close.shift(1)
         true_range = pd.concat([high-low, (high-prev_close).abs(), (low-prev_close).abs()], axis=1).max(axis=1)
@@ -213,7 +224,7 @@ def get_analysis(pair_name):
         macd_sig = macd_line.ewm(span=9).mean().iloc[-1]
         atr_pct = round((atr / price) * 100, 3)
 
-        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        client = _get_anthropic()
         prompt = (
             "Expert forex analyst. Plain text only, no markdown. "
             "Timeframe: 15-minute candles (5-day window). "
@@ -238,6 +249,7 @@ def get_analysis(pair_name):
 def get_sentiment():
     try:
         r = requests.get("https://api.alternative.me/fng/?limit=1", timeout=10)
+        r.raise_for_status()
         data = r.json()["data"][0]
         value = int(data["value"])
         classification = data["value_classification"]
@@ -268,8 +280,8 @@ def get_status():
                 stats = json.load(f)
         except (json.JSONDecodeError, ValueError) as e:
             print(f"get_status stats JSON error: {e}")
-    total = stats["wins"]+stats["losses"]
-    wr = round((stats["wins"]/total)*100,1) if total > 0 else 0
+    total = stats.get("wins",0)+stats.get("losses",0)
+    wr = round((stats.get("wins",0)/total)*100,1) if total > 0 else 0
     tz = pytz.timezone("Europe/Athens")
     now = datetime.now(tz).strftime("%d/%m/%Y %H:%M")
     lines = ["\U0001f4ca TRADING STATUS | "+now+"\n"]
@@ -282,7 +294,7 @@ def get_status():
     return "\n".join(lines)
 
 def set_commands():
-    requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/setMyCommands", json={
+    requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/setMyCommands", timeout=10, json={
         "commands": [
             {"command": "start", "description": "Start & main menu"},
             {"command": "analysis", "description": "Get analysis: /analysis EURUSD"},
@@ -349,6 +361,7 @@ def handle_message(chat_id, text, username, first_name=""):
             h = {"User-Agent":"Mozilla/5.0","X-Requested-With":"XMLHttpRequest","Referer":"https://www.investing.com/economic-calendar/"}
             d = {"dateFrom":today,"dateTo":today,"importance[]":["2","3"]}
             r = requests.post("https://www.investing.com/economic-calendar/Service/getCalendarFilteredData",headers=h,data=d,timeout=15)
+            r.raise_for_status()
             soup = BeautifulSoup(r.json().get("data",""),"html.parser")
             rows_inv = soup.find_all("tr",id=lambda x: x and x.startswith("eventRowId_"))
             events = []
@@ -397,7 +410,10 @@ def handle_message(chat_id, text, username, first_name=""):
                         break
                 if len(headlines) >= 8:
                     break
-            client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+            if not headlines:
+                send_message(chat_id, "🌍 No market headlines right now. Full coverage: @tradingNovaNews", main_menu())
+                return
+            client = _get_anthropic()
             news_text = "\n".join(headlines[:8])
             message = client.messages.create(
                 model="claude-haiku-4-5-20251001",
@@ -516,9 +532,11 @@ def handle_message(chat_id, text, username, first_name=""):
                     delta = close.diff()
                     gain = delta.clip(lower=0).rolling(14).mean()
                     loss = -delta.clip(upper=0).rolling(14).mean()
+                    loss = loss.replace(0, 1e-10)  # prevent NaN RSI on all-flat windows
                     rsi = (100-(100/(1+gain/loss))).iloc[-1]
-                    macd = (close.ewm(span=12).mean()-close.ewm(span=26).mean()).iloc[-1]
-                    macd_sig = (close.ewm(span=12).mean()-close.ewm(span=26).mean()).ewm(span=9).mean().iloc[-1]
+                    macd_line = close.ewm(span=12).mean()-close.ewm(span=26).mean()
+                    macd = macd_line.iloc[-1]
+                    macd_sig = macd_line.ewm(span=9).mean().iloc[-1]
                     if ema20 > ema50 and macd > macd_sig and rsi > 50:
                         bias = "BULLISH 🟢"
                     elif ema20 < ema50 and macd < macd_sig and rsi < 50:
@@ -648,7 +666,7 @@ def handle_message(chat_id, text, username, first_name=""):
                         entries = json.load(f)
                 except (json.JSONDecodeError, ValueError) as e:
                     print(f"Journal JSON error: {e}")
-            entries.append({"pair":pair,"side":side,"result":result,"pips":pips,"note":note,"date":datetime.now().strftime("%d/%m/%Y")})
+            entries.append({"pair":pair,"side":side,"result":result,"pips":pips,"note":note,"date":datetime.now(pytz.timezone("Europe/Athens")).strftime("%d/%m/%Y")})
             _tmp = journal_file + '.tmp'
             with open(_tmp, 'w') as f:
                 json.dump(entries, f)
@@ -762,10 +780,10 @@ def handle_message(chat_id, text, username, first_name=""):
                         last_signals = json.load(f)
                 except (json.JSONDecodeError, ValueError, OSError) as e:
                     print(f"signal history last_signals JSON error: {e}")
-            total = stats["wins"]+stats["losses"]
-            wr = round((stats["wins"]/total)*100,1) if total > 0 else 0
+            total = stats.get("wins",0)+stats.get("losses",0)
+            wr = round((stats.get("wins",0)/total)*100,1) if total > 0 else 0
             lines_h = ["📜 SIGNAL HISTORY"]
-            lines_h.append("🟢 Wins: "+str(stats["wins"])+" | 🔴 Losses: "+str(stats["losses"])+" | WR: "+str(wr)+"%")
+            lines_h.append("🟢 Wins: "+str(stats.get("wins",0))+" | 🔴 Losses: "+str(stats.get("losses",0))+" | WR: "+str(wr)+"%")
             lines_h.append("Last signals:")
             tz_athens = pytz.timezone("Europe/Athens")
             sorted_signals = sorted(last_signals.items(), key=lambda x: x[1].get("time", 0))
@@ -791,10 +809,12 @@ def handle_message(chat_id, text, username, first_name=""):
                     price = df["Close"].iloc[-1]
                     highs = df["High"].nlargest(3).values
                     lows = df["Low"].nsmallest(3).values
-                    r1 = round(highs[0],4)
-                    r2 = round(highs[1],4)
-                    s1 = round(lows[0],4)
-                    s2 = round(lows[1],4)
+                    # R1 = nearest resistance (second-highest), R2 = farther (highest)
+                    r1 = round(highs[1],4)
+                    r2 = round(highs[0],4)
+                    # S1 = nearest support (second-lowest), S2 = farther (lowest)
+                    s1 = round(lows[1],4)
+                    s2 = round(lows[0],4)
                     lines_sr.append("\n"+name+" | "+str(round(price,4)))
                     lines_sr.append("🔴 R2: "+str(r2)+" | R1: "+str(r1))
                     lines_sr.append("🟢 S1: "+str(s1)+" | S2: "+str(s2))
@@ -803,6 +823,9 @@ def handle_message(chat_id, text, username, first_name=""):
             send_message(chat_id, "\n".join(lines_sr), main_menu())
         except Exception as e:
             send_message(chat_id, "Error: "+str(e), main_menu())
+
+    else:
+        send_message(chat_id, "Use the menu below:", main_menu())
 
 def main():
     try:
@@ -828,21 +851,24 @@ def main():
                     cb_chat_id = str(callback.get("message", {}).get("chat", {}).get("id", ""))
                     cb_data = callback.get("data", "")
                     cb_id = callback.get("id", "")
+                    cb_username = callback.get("from", {}).get("username", "")
+                    cb_first_name = callback.get("from", {}).get("first_name", "")
                     answer_callback(cb_id)
                     if cb_data == "cmd_news":
-                        handle_message(cb_chat_id, "🌍 news", "")
+                        handle_message(cb_chat_id, "🌍 news", cb_username, cb_first_name)
                     elif cb_data == "cmd_analysis":
-                        handle_message(cb_chat_id, "📊 analysis", "")
+                        handle_message(cb_chat_id, "📊 analysis", cb_username, cb_first_name)
                     elif cb_data == "cmd_sentiment":
-                        handle_message(cb_chat_id, "🧠 sentiment", "")
+                        handle_message(cb_chat_id, "🧠 sentiment", cb_username, cb_first_name)
                     elif cb_data == "cmd_calendar":
-                        handle_message(cb_chat_id, "📅 calendar", "")
+                        handle_message(cb_chat_id, "📅 calendar", cb_username, cb_first_name)
                     elif cb_data == "cmd_status":
-                        handle_message(cb_chat_id, "📋 status", "")
+                        handle_message(cb_chat_id, "📋 status", cb_username, cb_first_name)
                     elif cb_data == "open_menu":
                         try:
                             requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/editMessageText",
-                                json={"chat_id": cb_chat_id, "message_id": callback.get("message",{}).get("message_id"), "text": WELCOME, "reply_markup": inline_main_menu()})
+                                json={"chat_id": cb_chat_id, "message_id": callback.get("message",{}).get("message_id"), "text": WELCOME, "reply_markup": inline_main_menu()},
+                                timeout=10)
                         except Exception as e:
                             print(f"open_menu callback error: {e}")
         except Exception as e:

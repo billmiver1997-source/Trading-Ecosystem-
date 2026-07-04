@@ -155,6 +155,7 @@ def find_poi(df, name):
     delta = close.diff()
     gain = delta.clip(lower=0).rolling(14).mean()
     loss = -delta.clip(upper=0).rolling(14).mean()
+    loss = loss.replace(0, 1e-10)  # prevent NaN RSI on all-flat windows
     rsi = (100 - (100 / (1 + gain / loss))).iloc[-1]
 
     # MACD
@@ -180,14 +181,14 @@ def find_poi(df, name):
     choch_bull = swing_high > prev_swing_high and swing_low > prev_swing_low
     choch_bear = swing_low < prev_swing_low and swing_high < prev_swing_high
 
-    # Order Block
+    # Order Block — start at i=2 so the most recent closed candle (iloc[-2]) is considered
     ob_bull_zone = None
     ob_bear_zone = None
-    for i in range(3, min(15, len(df))):
+    for i in range(2, min(15, len(df))):
         if df["Close"].iloc[-i] > df["Open"].iloc[-i] and df["Close"].iloc[-i-1] < df["Open"].iloc[-i-1]:
             ob_bull_zone = (round(df["Low"].iloc[-i-1], 5), round(df["High"].iloc[-i-1], 5))
             break
-    for i in range(3, min(15, len(df))):
+    for i in range(2, min(15, len(df))):
         if df["Close"].iloc[-i] < df["Open"].iloc[-i] and df["Close"].iloc[-i-1] > df["Open"].iloc[-i-1]:
             ob_bear_zone = (round(df["Low"].iloc[-i-1], 5), round(df["High"].iloc[-i-1], 5))
             break
@@ -425,10 +426,15 @@ def main():
 
     while True:
         try:
-            if not is_trading_session():
-                print("Outside trading session - sleeping...")
-                time.sleep(1800)
-                continue
+            in_session = is_trading_session()
+            if not in_session:
+                # Crypto pairs trade 24/7 — keep scanning them outside forex hours
+                crypto_in_pairs = [n for n in ALL_PAIRS if n in CRYPTO_PAIRS]
+                if not crypto_in_pairs:
+                    print("Outside trading session - sleeping...")
+                    time.sleep(1800)
+                    continue
+                print("Outside forex session - scanning crypto only...")
 
             now_time = time.time()
             best_poi = None
@@ -453,6 +459,8 @@ def main():
 
             for name, symbol in ALL_PAIRS.items():
                 try:
+                    if not in_session and name not in CRYPTO_PAIRS:
+                        continue
                     if name in open_pairs:
                         continue
 

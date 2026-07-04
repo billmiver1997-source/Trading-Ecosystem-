@@ -25,7 +25,7 @@ def load_profiles():
             with open(PROFILES_FILE) as f:
                 return json.load(f)
         except (json.JSONDecodeError, ValueError, OSError) as e:
-            print(f"load_profiles error: {e}")
+            logging.error("load_profiles error: %s", e)
     return {}
 
 def save_profile(user_id, username, first_name):
@@ -43,7 +43,7 @@ def save_profile(user_id, username, first_name):
                 json.dump(profiles, f)
             os.replace(tmp, PROFILES_FILE)
         except Exception as e:
-            print(f"save_profile error: {e}")
+            logging.error("save_profile error: %s", e)
 
 def get_welcome(name=""):
     greeting = f"Hey {name}! \U0001f44b" if name else "Hey! \U0001f44b"
@@ -140,7 +140,7 @@ def get_market_overview():
             emoji = "\U0001f7e2" if change > 0 else "\U0001f534"
             result.append(emoji+" "+name+": "+str(round(price,4))+" ("+("{:+.2f}".format(change))+"%)")
         except Exception as e:
-            print(f"Market overview error for {name}: {e}")
+            logging.error("Market overview error for %s: %s", name, e)
     tz = pytz.timezone("Europe/Athens")
     now = datetime.now(tz).strftime("%d/%m/%Y %H:%M")
     result.append("\n\U0001f554 "+now)
@@ -161,16 +161,19 @@ def get_education(topic):
         "psychology": "Explain trading psychology: FOMO, revenge trading, discipline. Max 200 words. Use emojis. Plain text only.",
         "howtostart": "Step by step guide to start trading for a complete beginner. Max 200 words. Use emojis. Plain text only.",
     }
+    prompt_text = prompts.get(topic)
+    if not prompt_text:
+        return "Education content for this topic is not available."
     try:
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=500,
-            messages=[{"role": "user", "content": prompts.get(topic, "")}]
+            messages=[{"role": "user", "content": prompt_text}]
         )
         return message.content[0].text
     except Exception as e:
-        print(f"Education API error for topic '{topic}': {e}")
+        logging.error("Education API error for topic '%s': %s", topic, e)
         return "Education content temporarily unavailable. Please try again later."
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -239,6 +242,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logging.warning("Brokers photo send failed: %s", e)
             await update.message.reply_text(msg, reply_markup=broker_links())
+        # Show navigation keyboard so TMGM Info / What You Get buttons are reachable
+        await update.message.reply_text("Explore more:", reply_markup=broker_menu())
     elif text == "\U0001f4ca Market Overview":
         await update.message.reply_text("\U0001f504 Loading...", reply_markup=main_menu())
         overview = await asyncio.to_thread(get_market_overview)
@@ -331,7 +336,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Choose an option below \U0001f447", reply_markup=main_menu())
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != OWNER_ID:
+    user = update.effective_user
+    if user is None or user.id != OWNER_ID:
         await update.message.reply_text("❌ Not authorized.")
         return
     profiles = load_profiles()
@@ -340,7 +346,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     items = list(profiles.items())[-10:]
     for uid, data in reversed(items):
         uname = "@"+data["username"] if data["username"] else data["first_name"] or f"ID:{uid}"
-        lines.append(f"• {uname} | {data['joined']}")
+        lines.append(f"• {uname} | {data.get('joined', 'N/A')}")
     await update.message.reply_text("\n".join(lines), reply_markup=main_menu())
 
 app = ApplicationBuilder().token(TOKEN).build()
