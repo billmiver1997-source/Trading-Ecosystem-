@@ -186,7 +186,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         notify = "\U0001f514 NEW USER\n\nName: "+name+" | "+username+"\nID: "+str(user.id)
         await context.bot.send_message(chat_id=OWNER_ID, text=notify)
     except Exception as e:
-        print(f"Owner notify error: {e}")
+        logging.error("Owner notify error: %s", e)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text

@@ -3,13 +3,11 @@ from dotenv import load_dotenv
 load_dotenv("/root/tradingbot/.env")
 
 import requests
-import json
 import time
 import pytz
 from datetime import datetime, timedelta
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
-USERS_FILE = "/root/tradingbot/users.json"
 NEWS_CHANNEL = os.getenv("TELEGRAM_NEWS_CHANNEL")
 
 SESSIONS = [
@@ -51,7 +49,8 @@ def main():
 
             if weekday == 5 or weekday == 6:
                 # Sleep until Monday 00:01 instead of looping every hour for 48h
-                days_until_monday = (7 - weekday) % 7 or 7
+                # weekday is 5 or 6 here, so (7 - weekday) % 7 is always 1 or 2
+                days_until_monday = (7 - weekday) % 7
                 monday = (now + timedelta(days=days_until_monday)).replace(
                     hour=0, minute=1, second=0, microsecond=0
                 )

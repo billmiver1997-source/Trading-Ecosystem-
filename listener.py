@@ -129,7 +129,8 @@ def get_updates(offset=None):
 def send_message(chat_id, text, reply_markup=None):
     payload = {"chat_id": chat_id, "text": text[:4096]}
     if reply_markup:
-        payload["reply_markup"] = json.dumps(reply_markup)
+        # Pass dict directly — requests json= serialises the whole payload, so do NOT json.dumps here
+        payload["reply_markup"] = reply_markup
     try:
         r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage", json=payload, timeout=10)
         r.raise_for_status()
@@ -256,7 +257,8 @@ def get_analysis(pair_name):
         now = datetime.now(tz).strftime("%d/%m/%Y %H:%M")
         return pair_name+" | "+now+"\n\n"+message.content[0].text
     except Exception as e:
-        return "Error: "+str(e)
+        print(f"get_analysis error ({pair_name}): {e}")
+        return "Analysis temporarily unavailable. Please try again."
 
 def get_sentiment():
     try:
@@ -336,7 +338,7 @@ def handle_message(chat_id, text, username, first_name=""):
         save_profile(chat_id, username, first_name)
         send_message(chat_id, WELCOME, main_menu())
 
-    elif text_lower == "/stats":
+    elif text_lower == "/stats" or text_lower.startswith("/stats@"):
         if str(chat_id) == OWNER_ID:
             profiles = load_profiles()
             total = len(profiles)
@@ -524,7 +526,8 @@ def handle_message(chat_id, text, username, first_name=""):
                 vlines.append("\n🚨 HIGH VOLATILITY: "+" | ".join(alerts))
             send_message(chat_id, "\n".join(vlines), main_menu())
         except Exception as e:
-            send_message(chat_id, "Error: "+str(e), main_menu())
+            print(f"Volatility handler error: {e}")
+            send_message(chat_id, "💥 Volatility data temporarily unavailable.", main_menu())
 
     elif text_lower.startswith("/mtf ") or text_lower.startswith("mtf "):
         send_typing(chat_id)
@@ -566,7 +569,8 @@ def handle_message(chat_id, text, username, first_name=""):
                 msg += "\n\n"+overall
                 send_message(chat_id, msg, main_menu())
         except Exception as e:
-            send_message(chat_id, "Error: "+str(e), main_menu())
+            print(f"MTF handler error: {e}")
+            send_message(chat_id, "📊 MTF analysis temporarily unavailable.", main_menu())
 
     elif text_lower in ["💼 portfolio", "/portfolio"]:
         try:
@@ -611,7 +615,8 @@ def handle_message(chat_id, text, username, first_name=""):
                 lines_p.append("\n"+total_emoji+" Total: "+str(round(total_pl,1))+" pips est.")
                 send_message(chat_id, "\n".join(lines_p), main_menu())
         except Exception as e:
-            send_message(chat_id, "Error: "+str(e), main_menu())
+            print(f"Portfolio handler error: {e}")
+            send_message(chat_id, "💼 Portfolio data temporarily unavailable.", main_menu())
 
     elif text_lower.startswith("add:"):
         try:
@@ -661,7 +666,8 @@ def handle_message(chat_id, text, username, first_name=""):
                     lines_j.append(result_emoji+" "+e["pair"]+" "+e["side"]+" | "+e.get("result","")+" "+e.get("pips","")+"\n   "+e.get("note",""))
                 send_message(chat_id, "\n".join(lines_j), main_menu())
         except Exception as e:
-            send_message(chat_id, "Error: "+str(e), main_menu())
+            print(f"Journal handler error: {e}")
+            send_message(chat_id, "📓 Trade journal temporarily unavailable.", main_menu())
 
     elif text_lower.startswith("journal:"):
         try:
@@ -719,7 +725,8 @@ def handle_message(chat_id, text, username, first_name=""):
                     lines_ib.append("\n💰 Total Earnings: $"+str(total_earn))
                     send_message(chat_id, "\n".join(lines_ib), main_menu())
         except Exception as e:
-            send_message(chat_id, "Error: "+str(e), main_menu())
+            print(f"IB tracker handler error: {e}")
+            send_message(chat_id, "💰 IB tracker temporarily unavailable.", main_menu())
 
     elif text_lower.startswith("client:"):
         try:
@@ -808,7 +815,8 @@ def handle_message(chat_id, text, username, first_name=""):
                 lines_h.append(sig_emoji+" "+pair+" "+sig+" | "+time_str)
             send_message(chat_id, "\n".join(lines_h), main_menu())
         except Exception as e:
-            send_message(chat_id, "Error: "+str(e), main_menu())
+            print(f"Signal history handler error: {e}")
+            send_message(chat_id, "📜 Signal history temporarily unavailable.", main_menu())
 
     elif text_lower in ["📍 s&r levels", "/sr"]:
         send_typing(chat_id)
@@ -835,7 +843,8 @@ def handle_message(chat_id, text, username, first_name=""):
                     print(f"S&R pair error {name}: {e}")
             send_message(chat_id, "\n".join(lines_sr), main_menu())
         except Exception as e:
-            send_message(chat_id, "Error: "+str(e), main_menu())
+            print(f"S&R handler error: {e}")
+            send_message(chat_id, "📍 S&R levels temporarily unavailable.", main_menu())
 
     else:
         send_message(chat_id, "Use the menu below:", main_menu())

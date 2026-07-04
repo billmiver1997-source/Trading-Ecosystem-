@@ -68,9 +68,9 @@ def collect_news():
                     headlines.append(title)
         except Exception as e:
             print(f"collect_news feed error {feed_url}: {e}")
-    # high-impact headlines first, then general — combining ensures trading-relevant
-    # events aren't dropped when only high-impact ones match
-    combined = list(set(high_impact + headlines))
+    # high-impact headlines first, then general; deduplicate while preserving order
+    seen = set()
+    combined = [h for h in high_impact + headlines if not (h in seen or seen.add(h))]
     return combined[:40]
 
 def create_report(headlines):

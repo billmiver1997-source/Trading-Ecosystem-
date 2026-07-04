@@ -350,7 +350,7 @@ PAIR_CURRENCIES = {
 }
 
 def get_news_blocked_currencies():
-    """Returns set of currency codes with high-impact events within ±30 minutes."""
+    """Returns set of currency codes with high-impact events within -15/+30 minutes."""
     try:
         from bs4 import BeautifulSoup
         tz = pytz.timezone("Europe/Athens")
@@ -429,11 +429,7 @@ def main():
             in_session = is_trading_session()
             if not in_session:
                 # Crypto pairs trade 24/7 — keep scanning them outside forex hours
-                crypto_in_pairs = [n for n in ALL_PAIRS if n in CRYPTO_PAIRS]
-                if not crypto_in_pairs:
-                    print("Outside trading session - sleeping...")
-                    time.sleep(1800)
-                    continue
+                # (ALL_PAIRS always includes BTC/USD and SOL/USD, so crypto is always present)
                 print("Outside forex session - scanning crypto only...")
 
             now_time = time.time()
@@ -474,7 +470,6 @@ def main():
                     last_sig_time = last_sig.get("time", 0)
                     if (now_time - last_sig_time) < 21600:
                         continue
-                    last_dir = last_sig.get("signal", "")
 
                     trend_4h = get_trend_4h(symbol)
                     df = get_data(symbol)
@@ -482,8 +477,9 @@ def main():
 
                     if poi:
                         signal = "BUY" if poi["bias"] == "BULLISH" else "SELL"
-                        if last_dir and signal == last_dir:
-                            continue
+                        # Removed permanent same-direction block: the 6h cooldown above
+                        # already prevents spam; blocking same direction forever prevented
+                        # valid re-entries in strong trends.
                         if trend_4h and signal == "BUY" and trend_4h != "BULL":
                             continue
                         if trend_4h and signal == "SELL" and trend_4h != "BEAR":

@@ -64,7 +64,8 @@ def get_trend_4h(symbol):
 
 def backtest_pair(name, symbol):
     df = yf.Ticker(symbol).history(period="60d", interval="1h")
-    if len(df) < 200:
+    # Need at least 261 rows so range(200, len(df)-60) has at least one iteration
+    if len(df) < 261:
         return None
 
     trend_4h = get_trend_4h(symbol)
@@ -105,8 +106,9 @@ def backtest_pair(name, symbol):
             tp = p + a*3; sl2 = p - a*1.5
             resolved = False
             for j in range(i+1, min(i+60, len(df))):
-                if high.iloc[j] >= tp: wins+=1; total_pips+=abs(tp-p); resolved=True; break
+                # Check SL first: if both SL and TP hit on same candle (gap), count as loss
                 if low.iloc[j] <= sl2: losses+=1; total_pips-=abs(p-sl2); resolved=True; break
+                if high.iloc[j] >= tp: wins+=1; total_pips+=abs(tp-p); resolved=True; break
             if not resolved:
                 timeouts += 1  # trade expired without hitting TP or SL
 
@@ -114,8 +116,9 @@ def backtest_pair(name, symbol):
             tp = p - a*3; sl2 = p + a*1.5
             resolved = False
             for j in range(i+1, min(i+60, len(df))):
-                if low.iloc[j] <= tp: wins+=1; total_pips+=abs(p-tp); resolved=True; break
+                # Check SL first: if both SL and TP hit on same candle (gap), count as loss
                 if high.iloc[j] >= sl2: losses+=1; total_pips-=abs(sl2-p); resolved=True; break
+                if low.iloc[j] <= tp: wins+=1; total_pips+=abs(p-tp); resolved=True; break
             if not resolved:
                 timeouts += 1  # trade expired without hitting TP or SL
 
@@ -160,7 +163,7 @@ def run_backtest():
 
     best = results[0]
     lines.append("\n🎯 Best: "+best["name"]+" ("+str(best["winrate"])+"% | "+str(best["signals"])+" signals)")
-    lines.append("Strategy: SMC + EMA200 + MACD + HTF 4H | Score>=4/4 | R:R 1:3")
+    lines.append("Strategy: SMC + EMA200 + MACD + HTF 4H | Score>=4/4 | R:R 1:2")
 
     send_all("\n".join(lines))
     print("Backtest report sent!")
