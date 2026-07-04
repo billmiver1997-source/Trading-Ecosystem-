@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv("/root/tradingbot/.env")
 
+import asyncio
 import random
 import requests
 import anthropic
@@ -143,6 +144,78 @@ TITLES = {
     "markets": "\U0001f6d2 MARKETS"
 }
 
+def _fetch_calendar_today():
+    """Sync helper: fetch today's (or tomorrow's) economic calendar for asyncio.to_thread."""
+    from bs4 import BeautifulSoup
+    from datetime import timedelta
+    tz2 = pytz.timezone("Europe/Athens")
+    today = datetime.now(tz2).strftime("%Y-%m-%d")
+    now_str = datetime.now(tz2).strftime("%d/%m/%Y")
+    h = {"User-Agent":"Mozilla/5.0","X-Requested-With":"XMLHttpRequest","Referer":"https://www.investing.com/economic-calendar/"}
+    d = {"dateFrom":today,"dateTo":today,"importance[]":["2","3"]}
+    r = requests.post("https://www.investing.com/economic-calendar/Service/getCalendarFilteredData",headers=h,data=d,timeout=15)
+    r.raise_for_status()
+    soup = BeautifulSoup(r.json().get("data",""),"html.parser")
+    rows = soup.find_all("tr",id=lambda x: x and x.startswith("eventRowId_"))
+    events = []
+    for row in rows[:8]:
+        try:
+            tds = row.find_all("td")
+            if len(tds) < 3: continue
+            ev_time = tds[0].text.strip()
+            currency = tds[1].text.strip()
+            ev_name = tds[3].text.strip() if len(tds)>3 else ""
+            if currency in ["USD","EUR","GBP","JPY","CHF","AUD","CAD","NZD"]:
+                events.append("📍 "+ev_time+" | "+currency+" | "+ev_name)
+        except Exception as e:
+            print(f"Calendar row parse error (today): {e}")
+            continue
+    msg = "📅 FOREX CALENDAR | "+now_str+chr(10)+chr(10)
+    if events:
+        msg += chr(10).join(events)
+    else:
+        tomorrow = (datetime.now(tz2) + timedelta(days=1)).strftime("%Y-%m-%d")
+        d2 = {"dateFrom":tomorrow,"dateTo":tomorrow,"importance[]":["2","3"]}
+        r2 = requests.post("https://www.investing.com/economic-calendar/Service/getCalendarFilteredData",headers=h,data=d2,timeout=15)
+        r2.raise_for_status()
+        soup2 = BeautifulSoup(r2.json().get("data",""),"html.parser")
+        rows2 = soup2.find_all("tr",id=lambda x: x and x.startswith("eventRowId_"))
+        tomorrow_events = []
+        for row in rows2[:8]:
+            try:
+                tds = row.find_all("td")
+                if len(tds) < 3: continue
+                ev_time = tds[0].text.strip()
+                currency = tds[1].text.strip()
+                ev_name = tds[3].text.strip() if len(tds)>3 else ""
+                if currency in ["USD","EUR","GBP","JPY","CHF","AUD","CAD","NZD"]:
+                    tomorrow_events.append("📍 "+ev_time+" | "+currency+" | "+ev_name)
+            except Exception as e:
+                print(f"Calendar row parse error (tomorrow): {e}")
+                continue
+        if tomorrow_events:
+            msg += "📌 No major events today."+chr(10)+chr(10)+"📆 TOMORROW:"+chr(10)+chr(10)+chr(10).join(tomorrow_events)
+        else:
+            msg += "No major forex events today or tomorrow."
+    msg += chr(10)+chr(10)+"📊 Full calendar sent at 07:00!"
+    return msg
+
+
+def _fetch_sentiment():
+    """Sync helper: fetch Fear & Greed index for asyncio.to_thread."""
+    r = requests.get("https://api.alternative.me/fng/?limit=1", timeout=10)
+    r.raise_for_status()
+    data = r.json()["data"][0]
+    value = int(data["value"])
+    classification = data["value_classification"]
+    if value >= 75: emoji = "🟢"
+    elif value >= 55: emoji = "🟡"
+    elif value >= 45: emoji = "🟠"
+    else: emoji = "🔴"
+    bar = "█"*(value//10)+"░"*(10-value//10)
+    return "🧠 MARKET SENTIMENT"+chr(10)+chr(10)+"Fear & Greed: "+emoji+" "+str(value)+"/100"+chr(10)+"["+bar+"]"+chr(10)+classification
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = (
         "📰 Welcome to the Nova News Bot\n\n"
@@ -171,8 +244,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text in category_map:
         await update.message.reply_text("\U0001f504 Loading latest news...", reply_markup=MAIN_MENU)
         category = category_map[text]
-        headlines = get_news(category)
-        summary = get_ai_summary(headlines, category)
+        # Run blocking network + AI calls off the event loop
+        headlines = await asyncio.to_thread(get_news, category)
+        summary = await asyncio.to_thread(get_ai_summary, headlines, category)
         await update.message.reply_text(
             TITLES[category]+" | "+now+"\n\n"+summary+"\n\n\U0001f4f0 Full coverage: @tradingNovaNews",
             reply_markup=MAIN_MENU
@@ -181,59 +255,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text in ["📅 Calendar"]:
         await update.message.reply_text("🔄 Loading...", reply_markup=MAIN_MENU)
         try:
-            from bs4 import BeautifulSoup
-            from datetime import datetime as dt5
-            tz2 = pytz.timezone("Europe/Athens")
-            today = dt5.now(tz2).strftime("%Y-%m-%d")
-            now_str = dt5.now(tz2).strftime("%d/%m/%Y")
-            h = {"User-Agent":"Mozilla/5.0","X-Requested-With":"XMLHttpRequest","Referer":"https://www.investing.com/economic-calendar/"}
-            d = {"dateFrom":today,"dateTo":today,"importance[]":["2","3"]}
-            r = requests.post("https://www.investing.com/economic-calendar/Service/getCalendarFilteredData",headers=h,data=d,timeout=15)
-            r.raise_for_status()
-            soup = BeautifulSoup(r.json().get("data",""),"html.parser")
-            rows = soup.find_all("tr",id=lambda x: x and x.startswith("eventRowId_"))
-            events = []
-            for row in rows[:8]:
-                try:
-                    tds = row.find_all("td")
-                    if len(tds) < 3: continue
-                    ev_time = tds[0].text.strip()
-                    currency = tds[1].text.strip()
-                    ev_name = tds[3].text.strip() if len(tds)>3 else ""
-                    if currency in ["USD","EUR","GBP","JPY","CHF","AUD","CAD","NZD"]:
-                        events.append("📍 "+ev_time+" | "+currency+" | "+ev_name)
-                except Exception as e:
-                    print(f"Calendar row parse error (today): {e}")
-                    continue
-            msg = "📅 FOREX CALENDAR | "+now_str+chr(10)+chr(10)
-            if events:
-                msg += chr(10).join(events)
-            else:
-                from datetime import timedelta
-                tomorrow = (dt5.now(tz2) + timedelta(days=1)).strftime("%Y-%m-%d")
-                d2 = {"dateFrom":tomorrow,"dateTo":tomorrow,"importance[]":["2","3"]}
-                r2 = requests.post("https://www.investing.com/economic-calendar/Service/getCalendarFilteredData",headers=h,data=d2,timeout=15)
-                r2.raise_for_status()
-                soup2 = BeautifulSoup(r2.json().get("data",""),"html.parser")
-                rows2 = soup2.find_all("tr",id=lambda x: x and x.startswith("eventRowId_"))
-                tomorrow_events = []
-                for row in rows2[:8]:
-                    try:
-                        tds = row.find_all("td")
-                        if len(tds) < 3: continue
-                        ev_time = tds[0].text.strip()
-                        currency = tds[1].text.strip()
-                        ev_name = tds[3].text.strip() if len(tds)>3 else ""
-                        if currency in ["USD","EUR","GBP","JPY","CHF","AUD","CAD","NZD"]:
-                            tomorrow_events.append("📍 "+ev_time+" | "+currency+" | "+ev_name)
-                    except Exception as e:
-                        print(f"Calendar row parse error (tomorrow): {e}")
-                        continue
-                if tomorrow_events:
-                    msg += "📌 No major events today."+chr(10)+chr(10)+"📆 TOMORROW:"+chr(10)+chr(10)+chr(10).join(tomorrow_events)
-                else:
-                    msg += "No major forex events today or tomorrow."
-            msg += chr(10)+chr(10)+"📊 Full calendar sent at 07:00!"
+            msg = await asyncio.to_thread(_fetch_calendar_today)
             await update.message.reply_text(msg, reply_markup=MAIN_MENU)
         except Exception as e:
             await update.message.reply_text("Error: "+str(e), reply_markup=MAIN_MENU)
@@ -241,57 +263,53 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text in ["🧠 Sentiment"]:
         await update.message.reply_text("🔄 Loading...", reply_markup=MAIN_MENU)
         try:
-            r = requests.get("https://api.alternative.me/fng/?limit=1", timeout=10)
-            r.raise_for_status()
-            data = r.json()["data"][0]
-            value = int(data["value"])
-            classification = data["value_classification"]
-            if value >= 75: emoji = "🟢"
-            elif value >= 55: emoji = "🟡"
-            elif value >= 45: emoji = "🟠"
-            else: emoji = "🔴"
-            bar = "█"*(value//10)+"░"*(10-value//10)
-            msg = "🧠 MARKET SENTIMENT"+chr(10)+chr(10)+"Fear & Greed: "+emoji+" "+str(value)+"/100"+chr(10)+"["+bar+"]"+chr(10)+classification
+            msg = await asyncio.to_thread(_fetch_sentiment)
             await update.message.reply_text(msg, reply_markup=MAIN_MENU)
         except Exception as e:
             await update.message.reply_text("Error: "+str(e), reply_markup=MAIN_MENU)
 
     elif text == "\U0001f4f0 Latest News":
         await update.message.reply_text("\U0001f504 Loading...", reply_markup=MAIN_MENU)
-        all_headlines = []
-        feeds = ["https://feeds.bbci.co.uk/news/world/rss.xml","https://www.forexlive.com/feed/news"]
-        keywords = ["war","fed","rate","trump","oil","gold","ukraine","iran","market","crash","rally"]
-        for feed_url in feeds:
+
+        def _fetch_latest_news():
+            all_h = []
+            feeds = ["https://feeds.bbci.co.uk/news/world/rss.xml","https://www.forexlive.com/feed/news"]
+            keywords = ["war","fed","rate","trump","oil","gold","ukraine","iran","market","crash","rally"]
+            for feed_url in feeds:
+                try:
+                    feed = feedparser.parse(feed_url)
+                    for entry in feed.entries[:15]:
+                        title = entry.get("title","")
+                        if any(k in title.lower() for k in keywords):
+                            all_h.append(title)
+                        if len(all_h) >= 8:
+                            break
+                except Exception as e:
+                    print(f"Feed parse error {feed_url}: {e}")
+                    continue
+                if len(all_h) >= 8:
+                    break
+            if not all_h:
+                return None
             try:
-                feed = feedparser.parse(feed_url)
-                for entry in feed.entries[:15]:
-                    title = entry.get("title","")
-                    if any(k in title.lower() for k in keywords):
-                        all_headlines.append(title)
-                    if len(all_headlines) >= 8:
-                        break
+                client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+                message = client.messages.create(
+                    model="claude-haiku-4-5-20251001",
+                    max_tokens=300,
+                    messages=[{"role":"user","content":"Pick 5 most important headlines for traders. One short line each with emoji. Simple English.\n\n"+"\n".join(all_h[:8])}]
+                )
+                return message.content[0].text
             except Exception as e:
-                print(f"Feed parse error {feed_url}: {e}")
-                continue
-            if len(all_headlines) >= 8:  # also break the outer feed loop
-                break
-        if not all_headlines:
+                print(f"Latest news AI error: {e}")
+                return "\n".join("• "+h for h in all_h[:5])
+
+        summary_text = await asyncio.to_thread(_fetch_latest_news)
+        if summary_text is None:
             await update.message.reply_text(
                 "\U0001f4f0 No major market news found right now.\n\n\U0001f4f0 Full coverage: @tradingNovaNews",
                 reply_markup=MAIN_MENU
             )
             return
-        try:
-            client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-            message = client.messages.create(
-                model="claude-haiku-4-5-20251001",
-                max_tokens=300,
-                messages=[{"role":"user","content":"Pick 5 most important headlines for traders. One short line each with emoji. Simple English.\n\n"+"\n".join(all_headlines[:8])}]
-            )
-            summary_text = message.content[0].text
-        except Exception as e:
-            print(f"Latest news AI error: {e}")
-            summary_text = "\n".join("• "+h for h in all_headlines[:5])
         await update.message.reply_text(
             "\U0001f4f0 LATEST NEWS | "+now+"\n\n"+summary_text+"\n\n\U0001f4f0 @tradingNovaNews",
             reply_markup=MAIN_MENU

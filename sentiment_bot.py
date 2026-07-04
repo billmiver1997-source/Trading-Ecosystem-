@@ -36,6 +36,7 @@ def send_channel(msg):
 def get_fear_greed():
     try:
         r = requests.get("https://api.alternative.me/fng/?limit=1", timeout=10)
+        r.raise_for_status()
         data = r.json()["data"][0]
         value = int(data["value"])
         classification = data["value_classification"]

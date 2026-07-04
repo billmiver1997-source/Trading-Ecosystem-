@@ -93,7 +93,8 @@ def main():
                         msg += "USD pairs, Gold, Oil, S&P500"
 
                     if s["name"] == "New York":
-                        msg += "\n\n\U0001f525 OVERLAP: London + NY now active! Highest volatility period!"
+                        # London (10:00–19:00) overlaps with NY (16:00–23:00); alert fires 30 min early
+                        msg += "\n\n\U0001f525 OVERLAP: London + NY overlap starts in 30 minutes! Highest volatility period!"
 
                     send_all(msg)
                     sent[alert_key_open] = True

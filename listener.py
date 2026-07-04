@@ -225,19 +225,31 @@ def get_analysis(pair_name):
         atr_pct = round((atr / price) * 100, 3)
 
         client = _get_anthropic()
+        system_prompt = (
+            "You are a professional forex and commodities analyst. "
+            "Respond in plain text only — no markdown, no asterisks, no headers. "
+            "Always give a specific numeric ENTRY, SL, and TP. "
+            "Calculate SL using ATR*1.5 distance from entry; TP using ATR*3 (1:2 risk-reward). "
+            "Keep the full response under 150 words."
+        )
         prompt = (
-            "Expert forex analyst. Plain text only, no markdown. "
-            "Timeframe: 15-minute candles (5-day window). "
-            "Pair: "+pair_name+". "
-            "Format: TREND / SIGNAL: BUY or SELL or WAIT / ENTRY / SL / TP / RISK NOTE. "
-            "Data: Price="+str(round(price,5))+" EMA20="+str(round(ema20,5))+" EMA50="+str(round(ema50,5))+
-            " RSI="+str(round(rsi,1))+" MACD="+str(round(macd,5))+" MACD_Signal="+str(round(macd_sig,5))+
-            " ATR="+str(round(atr,5))+" ("+str(atr_pct)+"% of price)"+
-            " BBup="+str(round(bb_upper,5))+" BBlo="+str(round(bb_lower,5))
+            "Analyze "+pair_name+" on the 15-minute chart.\n\n"
+            "Price: "+str(round(price,5))+" | EMA20: "+str(round(ema20,5))+" | EMA50: "+str(round(ema50,5))+"\n"
+            "RSI: "+str(round(rsi,1))+" | MACD: "+str(round(macd,5))+" | Signal: "+str(round(macd_sig,5))+"\n"
+            "ATR: "+str(round(atr,5))+" ("+str(atr_pct)+"% of price)\n"
+            "BB Upper: "+str(round(bb_upper,5))+" | BB Lower: "+str(round(bb_lower,5))+"\n\n"
+            "Respond in this exact format:\n"
+            "TREND: [Bullish/Bearish/Neutral]\n"
+            "SIGNAL: [BUY/SELL/WAIT]\n"
+            "ENTRY: [price]\n"
+            "SL: [price]\n"
+            "TP: [price]\n"
+            "RISK NOTE: [one sentence about key risk or context]"
         )
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=650,
+            max_tokens=250,
+            system=system_prompt,
             messages=[{"role":"user","content":prompt}]
         )
         tz = pytz.timezone("Europe/Athens")
