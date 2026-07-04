@@ -189,6 +189,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             h = {"User-Agent":"Mozilla/5.0","X-Requested-With":"XMLHttpRequest","Referer":"https://www.investing.com/economic-calendar/"}
             d = {"dateFrom":today,"dateTo":today,"importance[]":["2","3"]}
             r = requests.post("https://www.investing.com/economic-calendar/Service/getCalendarFilteredData",headers=h,data=d,timeout=15)
+            r.raise_for_status()
             soup = BeautifulSoup(r.json().get("data",""),"html.parser")
             rows = soup.find_all("tr",id=lambda x: x and x.startswith("eventRowId_"))
             events = []
@@ -212,6 +213,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 tomorrow = (dt5.now(tz2) + timedelta(days=1)).strftime("%Y-%m-%d")
                 d2 = {"dateFrom":tomorrow,"dateTo":tomorrow,"importance[]":["2","3"]}
                 r2 = requests.post("https://www.investing.com/economic-calendar/Service/getCalendarFilteredData",headers=h,data=d2,timeout=15)
+                r2.raise_for_status()
                 soup2 = BeautifulSoup(r2.json().get("data",""),"html.parser")
                 rows2 = soup2.find_all("tr",id=lambda x: x and x.startswith("eventRowId_"))
                 tomorrow_events = []
@@ -240,6 +242,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("🔄 Loading...", reply_markup=MAIN_MENU)
         try:
             r = requests.get("https://api.alternative.me/fng/?limit=1", timeout=10)
+            r.raise_for_status()
             data = r.json()["data"][0]
             value = int(data["value"])
             classification = data["value_classification"]

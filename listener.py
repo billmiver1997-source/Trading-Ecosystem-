@@ -291,6 +291,7 @@ def get_status():
             lines.append("- "+t["name"]+" "+t["signal"]+" @ "+str(round(t["entry"],4)))
     else:
         lines.append("No open trades right now.")
+    lines.append("\n\U0001f4ca Stats: "+str(stats.get("wins",0))+"W / "+str(stats.get("losses",0))+"L | WR: "+str(wr)+"%")
     return "\n".join(lines)
 
 def set_commands():
