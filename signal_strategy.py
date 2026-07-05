@@ -19,26 +19,6 @@ LAST_SIGNAL_FILE = "/root/tradingbot/last_signals_smc.json"
 IMAGES_DIR = "/root/tradingbot/images"
 _photo_ids = {}
 
-def _send_photo_signal():
-    path = os.path.join(IMAGES_DIR, "signals.jpg")
-    if not os.path.exists(path):
-        return
-    try:
-        fid = _photo_ids.get("signals.jpg")
-        if fid:
-            r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
-                json={"chat_id": SIGNALS_CHANNEL, "photo": fid}, timeout=15)
-        else:
-            with open(path, "rb") as pf:
-                r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
-                    files={"photo": ("image.jpg", pf, "image/jpeg")},
-                    data={"chat_id": SIGNALS_CHANNEL}, timeout=15)
-            photos = r.json().get("result", {}).get("photo", [])
-            if photos:
-                _photo_ids["signals.jpg"] = photos[-1]["file_id"]
-        r.raise_for_status()
-    except Exception as e:
-        print(f"send_photo error: {e}")
 
 ALL_PAIRS = {
     "XAU/USD": "GC=F",
@@ -120,9 +100,24 @@ def save_last_signals(data):
         print(f"save_last_signals error: {e}")
 
 def send_signal(msg):
+    path = os.path.join(IMAGES_DIR, "signals.jpg")
+    cap = msg[:1024]
     try:
-        r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
-            json={"chat_id": SIGNALS_CHANNEL, "text": msg[:4000]}, timeout=10)
+        fid = _photo_ids.get("signals.jpg")
+        if fid and os.path.exists(path):
+            r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
+                json={"chat_id": SIGNALS_CHANNEL, "photo": fid, "caption": cap}, timeout=15)
+        elif os.path.exists(path):
+            with open(path, "rb") as pf:
+                r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
+                    files={"photo": ("image.jpg", pf, "image/jpeg")},
+                    data={"chat_id": SIGNALS_CHANNEL, "caption": cap}, timeout=15)
+            photos = r.json().get("result", {}).get("photo", [])
+            if photos:
+                _photo_ids["signals.jpg"] = photos[-1]["file_id"]
+        else:
+            r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
+                json={"chat_id": SIGNALS_CHANNEL, "text": msg[:4000]}, timeout=10)
         r.raise_for_status()
     except Exception as e:
         print("Send error: "+str(e))
@@ -529,7 +524,6 @@ def main():
 
             if best_poi:
                 msg = format_poi(best_name, best_poi)
-                _send_photo_signal()
                 send_signal(msg)
                 signal = "BUY" if best_poi["bias"] == "BULLISH" else "SELL"
                 last_sig_key = f"{best_name}_{signal}"

@@ -17,23 +17,33 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 IMAGES_DIR = "/root/tradingbot/images"
 _photo_ids = {}
 
-def send_photo_channel(photo_name):
+def send_photo_channel(photo_name, caption="", parse_mode=None):
     path = os.path.join(IMAGES_DIR, photo_name)
-    if not os.path.exists(path):
-        return
+    cap = caption[:1024]
     try:
         fid = _photo_ids.get(photo_name)
-        if fid:
+        if fid and os.path.exists(path):
+            payload = {"chat_id": CHANNEL_ID, "photo": fid, "caption": cap, "disable_web_page_preview": True}
+            if parse_mode:
+                payload["parse_mode"] = parse_mode
             r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
-                json={"chat_id": CHANNEL_ID, "photo": fid}, timeout=15)
-        else:
+                json=payload, timeout=15)
+        elif os.path.exists(path):
+            data = {"chat_id": CHANNEL_ID, "caption": cap, "disable_web_page_preview": "true"}
+            if parse_mode:
+                data["parse_mode"] = parse_mode
             with open(path, "rb") as pf:
                 r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
                     files={"photo": ("image.jpg", pf, "image/jpeg")},
-                    data={"chat_id": CHANNEL_ID}, timeout=15)
+                    data=data, timeout=15)
             photos = r.json().get("result", {}).get("photo", [])
             if photos:
                 _photo_ids[photo_name] = photos[-1]["file_id"]
+        else:
+            # Fallback: text only
+            r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
+                json={"chat_id": CHANNEL_ID, "text": cap, "disable_web_page_preview": True,
+                      **({"parse_mode": parse_mode} if parse_mode else {})}, timeout=15)
         r.raise_for_status()
     except Exception as e:
         print(f"send_photo error: {e}")
@@ -187,18 +197,21 @@ def main():
                     report, top_links = create_report(items)
                     if report:
                         header = random.choice(SCHEDULE[hour])
-                        send_photo_channel("news.jpg")
-                        # Escape AI text so stray &/</> chars don't break Telegram's HTML parser
-                        msg = _html.escape(header)+"\n🕔 "+_html.escape(now_str)+"\n\n"+_html.escape(report)
+                        base = _html.escape(header)+"\n🕔 "+_html.escape(now_str)+"\n\n"+_html.escape(report)
                         if top_links:
                             links_section = "\n\n📎 Read more:\n"
                             for title, url in top_links:
-                                short = title[:60]+"…" if len(title) > 60 else title
-                                # URLs often contain & in query strings; titles may have < or >
+                                short = title[:55]+"…" if len(title) > 55 else title
                                 safe_url = url.replace("&", "&amp;")
                                 links_section += f'• <a href="{safe_url}">{_html.escape(short)}</a>\n'
-                            msg += links_section.rstrip()
-                        send_channel(msg, parse_mode="HTML")
+                            links_str = links_section.rstrip()
+                            max_base = 1024 - len(links_str)
+                            msg = base[:max_base] + links_str
+                            parse_mode = "HTML"
+                        else:
+                            msg = base
+                            parse_mode = None
+                        send_photo_channel("news.jpg", caption=msg, parse_mode=parse_mode)
                         print(f"Sent {hour}:00 update!")
                 sent_today[send_key] = True  # mark attempted regardless to prevent duplicate sends
                 time.sleep(600)

@@ -15,31 +15,26 @@ ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY")
 IMAGES_DIR = "/root/tradingbot/images"
 _photo_ids = {}
 
-def _send_photo(photo_name):
-    path = os.path.join(IMAGES_DIR, photo_name)
-    if not os.path.exists(path):
-        return
+def send(msg, photo_name=None):
+    cap = msg[:1024]
+    path = os.path.join(IMAGES_DIR, photo_name) if photo_name else None
     try:
-        fid = _photo_ids.get(photo_name)
-        if fid:
-            r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
-                json={"chat_id": CHANNEL_ID, "photo": fid}, timeout=15)
-        else:
-            with open(path, "rb") as pf:
+        if path and os.path.exists(path):
+            fid = _photo_ids.get(photo_name)
+            if fid:
                 r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
-                    files={"photo": ("image.jpg", pf, "image/jpeg")},
-                    data={"chat_id": CHANNEL_ID}, timeout=15)
-            photos = r.json().get("result", {}).get("photo", [])
-            if photos:
-                _photo_ids[photo_name] = photos[-1]["file_id"]
-        r.raise_for_status()
-    except Exception as e:
-        print(f"send_photo error: {e}")
-
-def send(msg):
-    try:
-        r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
-            json={"chat_id": CHANNEL_ID, "text": msg[:4000]}, timeout=10)
+                    json={"chat_id": CHANNEL_ID, "photo": fid, "caption": cap}, timeout=15)
+            else:
+                with open(path, "rb") as pf:
+                    r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
+                        files={"photo": ("image.jpg", pf, "image/jpeg")},
+                        data={"chat_id": CHANNEL_ID, "caption": cap}, timeout=15)
+                photos = r.json().get("result", {}).get("photo", [])
+                if photos:
+                    _photo_ids[photo_name] = photos[-1]["file_id"]
+        else:
+            r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
+                json={"chat_id": CHANNEL_ID, "text": msg[:4000]}, timeout=10)
         r.raise_for_status()
         print("Sent!")
     except Exception as e:
@@ -87,8 +82,7 @@ def daily_tip():
     prompt = random.choice(formats).format(topic=topic, context=context)
     text = ai(prompt)
     if text:
-        _send_photo("tips.jpg")
-        send(random.choice(headers)+"\n\n"+text+"\n\n📊 @novasignalschannel1\n\n⚠️ Educational purposes only. Not financial advice.")
+        send(random.choice(headers)+"\n\n"+text+"\n\n📊 @novasignalschannel1\n\n⚠️ Educational purposes only. Not financial advice.", photo_name="tips.jpg")
 
 def psychology_post():
     import random
@@ -101,8 +95,7 @@ def psychology_post():
     headers = ["🧠 TRADING PSYCHOLOGY", "💭 MINDSET MATTERS", "🎯 TRADER MINDSET", "🧘 MENTAL EDGE"]
     text = ai(random.choice(prompts))
     if text:
-        _send_photo("psychology.jpg")
-        send(random.choice(headers)+"\n\n"+text+"\n\n📊 @novasignalschannel1")
+        send(random.choice(headers)+"\n\n"+text+"\n\n📊 @novasignalschannel1", photo_name="psychology.jpg")
 
 def weekly_preview():
     import random
@@ -116,8 +109,7 @@ def weekly_preview():
     headers = ["📅 WEEK AHEAD", "🗓 WEEKLY PREVIEW", "📊 THIS WEEK IN MARKETS", "🔭 WEEK AHEAD OUTLOOK"]
     text = ai(random.choice(prompts))
     if text:
-        _send_photo("weekly.jpg")
-        send(random.choice(headers)+" | "+week+"\n\n"+text+"\n\n📊 @novasignalschannel1")
+        send(random.choice(headers)+" | "+week+"\n\n"+text+"\n\n📊 @novasignalschannel1", photo_name="weekly.jpg")
 
 def weekly_summary():
     import random
@@ -129,8 +121,7 @@ def weekly_summary():
     headers = ["📈 WEEKLY WRAP-UP", "📋 WEEK IN REVIEW", "🏁 FRIDAY WRAP", "📊 THIS WEEK SUMMARY"]
     text = ai(random.choice(prompts))
     if text:
-        _send_photo("weekly.jpg")
-        send(random.choice(headers)+"\n\n"+text+"\n\n📊 @novasignalschannel1")
+        send(random.choice(headers)+"\n\n"+text+"\n\n📊 @novasignalschannel1", photo_name="weekly.jpg")
 
 def main():
     try:
