@@ -55,27 +55,28 @@ def get_greece_time():
     return datetime.now(tz).strftime("%d/%m/%Y %H:%M")
 
 def collect_news():
-    headlines = []
-    high_impact = []
+    headlines = []    # list of (title, url)
+    high_impact = []  # list of (title, url)
     for feed_url in FEEDS:
         try:
             feed = feedparser.parse(feed_url)
             for entry in feed.entries[:20]:
                 title = entry.get("title","")
+                url = entry.get("link","")
                 title_lower = title.lower()
                 if any(k in title_lower for k in HIGH_IMPACT):
-                    high_impact.append(title)
+                    high_impact.append((title, url))
                 elif any(k in title_lower for k in KEYWORDS):
-                    headlines.append(title)
+                    headlines.append((title, url))
         except Exception as e:
             print(f"collect_news feed error {feed_url}: {e}")
-    # high-impact headlines first, then general; deduplicate while preserving order
+    # high-impact first, deduplicate by title
     combined = []
     seen = set()
-    for h in high_impact + headlines:
-        if h not in seen:
-            seen.add(h)
-            combined.append(h)
+    for item in high_impact + headlines:
+        if item[0] not in seen:
+            seen.add(item[0])
+            combined.append(item)
     return combined[:40]
 
 REPORT_STYLES = [
@@ -101,9 +102,11 @@ REPORT_STYLES = [
     },
 ]
 
-def create_report(headlines):
-    if not headlines:
-        return None
+def create_report(items):
+    if not items:
+        return None, []
+    titles = [t for t, u in items]
+    top_links = [(t, u) for t, u in items[:6] if u][:4]
     try:
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
         style = random.choice(REPORT_STYLES)
@@ -111,20 +114,21 @@ def create_report(headlines):
             model="claude-haiku-4-5-20251001",
             max_tokens=380,
             system=style["system"],
-            messages=[{"role":"user","content":style["user"].format(headlines="\n".join(headlines[:10]))}]
+            messages=[{"role":"user","content":style["user"].format(headlines="\n".join(titles[:10]))}]
         )
-        return message.content[0].text
+        return message.content[0].text, top_links
     except Exception as e:
         print("AI error: "+str(e))
-        return None
+        return None, []
 
-def send_channel(msg):
+def send_channel(msg, parse_mode=None):
     try:
-        for i in range(0, len(msg), 4000):
-            r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
-                json={"chat_id": CHANNEL_ID, "text": msg[i:i+4000]}, timeout=10)
-            r.raise_for_status()
-            time.sleep(0.5)
+        payload = {"chat_id": CHANNEL_ID, "text": msg[:4096], "disable_web_page_preview": True}
+        if parse_mode:
+            payload["parse_mode"] = parse_mode
+        r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
+            json=payload, timeout=10)
+        r.raise_for_status()
     except Exception as e:
         print("Send error: "+str(e))
 
@@ -154,12 +158,19 @@ def main():
             if hour in SCHEDULE and minute < 10 and send_key not in sent_today:
                 now_str = get_greece_time()
                 print(f"Sending {hour}:00 update...")
-                headlines = collect_news()
-                if headlines:
-                    report = create_report(headlines)
+                items = collect_news()
+                if items:
+                    report, top_links = create_report(items)
                     if report:
                         header = random.choice(SCHEDULE[hour])
-                        send_channel(header+"\n🕔 "+now_str+"\n\n"+report)
+                        msg = header+"\n🕔 "+now_str+"\n\n"+report
+                        if top_links:
+                            links_section = "\n\n📎 Read more:\n"
+                            for title, url in top_links:
+                                short = title[:60]+"…" if len(title) > 60 else title
+                                links_section += f'• <a href="{url}">{short}</a>\n'
+                            msg += links_section.rstrip()
+                        send_channel(msg, parse_mode="HTML")
                         print(f"Sent {hour}:00 update!")
                 sent_today[send_key] = True  # mark attempted regardless to prevent duplicate sends
                 time.sleep(600)
