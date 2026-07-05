@@ -50,17 +50,16 @@ ALIASES = {
 }
 
 WELCOME = (
-    "\U0001f4c8 Welcome to Trading Nova Signal!\n\n"
-    "Here you will find signals based on indicators and important Fundamental News.\n\n"
-    "You will receive signals for:\n"
-    "\U0001fa99 XAU/USD | \U0001f1ea\U0001f1fa EUR/USD | \U0001f1ec\U0001f1e7 GBP/USD\n"
-    "\U0001f7e1 BTC/USD | \U0001f535 SOL/USD | \u26fd Oil/USD\n"
-    "...and many more!\n\n"
-    "\U0001f3af Signals are sent only when a real opportunity is detected.\n\n"
-    "Use the menu below to get started \U0001f447\n\n"
-    "\u26a0\ufe0f Disclaimer: All signals and content are for educational purposes only and do not constitute financial advice. "
-    "Trading involves substantial risk of loss. Past performance does not guarantee future results. "
-    "Never risk more than you can afford to lose."
+    "\U0001f4c8 Welcome to Trading Nova Signal\n\n"
+    "This is your trading command centre. Live signals, AI analysis, market sentiment, news, risk tools \u2014 all in one place.\n\n"
+    "Signals cover 12 instruments:\n"
+    "\U0001fa99 XAU/USD \u2022 \U0001f1ea\U0001f1fa EUR/USD \u2022 \U0001f1ec\U0001f1e7 GBP/USD\n"
+    "\U0001f7e1 BTC/USD \u2022 \U0001f535 SOL/USD \u2022 \u26fd Oil/USD\n"
+    "USD/JPY \u2022 USD/CHF \u2022 AUD/USD \u2022 USD/CAD \u2022 NZD/USD \u2022 Silver\n\n"
+    "Signals are sent only when a high-quality setup is confirmed \u2014 not on a fixed schedule, not for the sake of activity.\n\n"
+    "Use the menu below to explore what's available \U0001f447\n\n"
+    "\u26a0\ufe0f All signals and content are for educational purposes only. Not financial advice. "
+    "Trading involves substantial risk of loss. Never risk more than you can afford to lose."
 )
 
 def load_users():
@@ -430,6 +429,7 @@ def handle_message(chat_id, text, username, first_name=""):
         send_typing(chat_id)
         try:
             import feedparser
+            import random as _rnd
             tz = pytz.timezone("Europe/Athens")
             now_str = datetime.now(tz).strftime("%d/%m/%Y %H:%M")
             keywords = ["war","attack","fed","rate","inflation","trump","tariff","oil","gold","dollar","ukraine","iran","china","russia","market","crash","rally","ceasefire","ecb","boe","sanctions"]
@@ -445,17 +445,25 @@ def handle_message(chat_id, text, username, first_name=""):
                 if len(headlines) >= 8:
                     break
             if not headlines:
-                send_message(chat_id, "🌍 No market headlines right now. Full coverage: @tradingNovaNews", main_menu())
+                send_message(chat_id, "🌍 No major market headlines right now.\n\n📰 Full coverage: @tradingNovaNews", main_menu())
                 return
             client = _get_anthropic()
             news_text = "\n".join(headlines[:8])
+            news_styles = [
+                "You are a financial news editor for traders. Plain text, no markdown. From these headlines, pick the 5 most market-relevant stories. Write each as one punchy line with an emoji. End with one sentence on the key theme tying them together.",
+                "You are a senior forex analyst. Plain text only. Pick the 3-4 most impactful headlines and explain in 2-3 lines what they mean for traders right now. Use emojis. No lists — write it as a natural briefing.",
+                "You are a trading desk analyst sharing breaking news with your team. Plain text. Highlight the top stories, flag any high-impact events, and add your read on what to watch. 4-6 lines. Emojis.",
+                "You are a market intelligence analyst. Plain text only. From these headlines, identify the dominant theme (geopolitical risk / central bank moves / commodity pressure / etc.) and explain the top 3-4 stories that support it. Be sharp and direct. Emojis.",
+            ]
+            style = _rnd.choice(news_styles)
+            headers = ["📰 LATEST NEWS", "📡 MARKET INTELLIGENCE", "🗞 BREAKING MARKET NEWS", "📊 MARKET UPDATE"]
             message = client.messages.create(
                 model="claude-haiku-4-5-20251001",
                 max_tokens=400,
-                system="You are a financial news analyst. Respond in plain text only — no markdown, no asterisks, no bullet symbols.",
-                messages=[{"role":"user","content":"From these headlines pick the 5 most important for traders. Write each as one short line with an emoji. Then add one sentence summary. Simple English. Plain text.\n\n"+news_text}]
+                system=style,
+                messages=[{"role":"user","content":"Headlines:\n\n"+news_text}]
             )
-            send_message(chat_id, "📰 LATEST NEWS\n🕔 "+now_str+"\n\n"+message.content[0].text+"\n\n📰 Full news: @tradingNovaNews", main_menu())
+            send_message(chat_id, _rnd.choice(headers)+"\n🕔 "+now_str+"\n\n"+message.content[0].text+"\n\n📰 Full coverage: @tradingNovaNews", main_menu())
         except Exception as e:
             print(f"News handler error: {e}")
             send_message(chat_id, "🌍 Latest news at @tradingNovaNews", main_menu())
@@ -487,7 +495,7 @@ def handle_message(chat_id, text, username, first_name=""):
         send_message(chat_id, "Choose a pair:", pairs_menu())
 
     elif text_lower in ["🧮 risk calculator", "/risk"]:
-        send_message(chat_id, "🧮 RISK CALCULATOR\n\nSend your details like this:\n\nBALANCE: 1000\nRISK: 1\nSL PIPS: 20\nPAIR: EURUSD", main_menu())
+        send_message(chat_id, "🧮 RISK CALCULATOR\n\nEnter your trade details and I'll calculate the correct lot size based on your account balance, risk percentage and stop loss distance.\n\nFormat:\n\nBALANCE: 1000\nRISK: 1\nSL PIPS: 20\nPAIR: EURUSD\n\nExample: 1% risk on a $1,000 account with a 20-pip SL on EUR/USD.", main_menu())
 
     elif text_lower.startswith("balance:"):
         try:

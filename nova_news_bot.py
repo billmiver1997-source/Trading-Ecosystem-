@@ -112,22 +112,48 @@ def get_news(category):
             break
     return headlines[:10]
 
+SUMMARY_STYLES = {
+    "ukraine": [
+        "You are a Ukrainian war correspondent. Write a structured briefing in Ukrainian. 3 sections: ⚔️ ВІЙСЬКОВІ ДІЇ (military), 🏛 ПОЛІТИКА (politics), 💰 ЕКОНОМІКА (economy). Each section 2-3 sentences. Plain text, emojis.",
+        "You are a foreign correspondent covering Ukraine. Write in Ukrainian. Lead with the most critical military development, then key political and economic updates. 4-6 sentences total. Plain text, emojis.",
+        "You are an analyst at a Ukrainian news agency. Write in Ukrainian. Pick the 3 most important stories and explain each in 2 sentences: what happened + what it means. Plain text, emojis.",
+    ],
+    "greece": [
+        "Είσαι δημοσιογράφος οικονομικής εφημερίδας. Γράψε στα Ελληνικά. Παρουσίασε τις 4-5 πιο σημαντικές ειδήσεις με σύντομη ανάλυση. Χρησιμοποίησε emojis.",
+        "Σύνοψε αυτές τις ειδήσεις για την Ελλάδα στα Ελληνικά. Ξεκίνα με την πιο σημαντική, δώσε συνοπτική ανάλυση για κάθε μία. 5-7 προτάσεις. Emojis.",
+        "Είσαι αναλυτής της ελληνικής αγοράς. Γράψε στα Ελληνικά. Ποια είναι η κυρίαρχη τάση στις σημερινές ειδήσεις; Τι σημαίνει για επενδυτές και επιχειρήσεις; 4-6 προτάσεις. Emojis.",
+    ],
+    "finance": [
+        "You are a senior market analyst briefing traders. Plain text only, no markdown. Pick the 4-5 most market-moving stories, explain each in one line with trading implication. Use emojis.",
+        "You are a forex and macro analyst. Plain text. What are the dominant themes in today's financial news? Explain the top stories and connect the dots — what should traders be watching? 4-6 sentences. Emojis.",
+        "You are a trading desk analyst. Plain text. Pick the 3 most impactful financial stories and write 2 sentences each: what happened + what it means for EUR/USD, Gold, or risk sentiment. Emojis.",
+    ],
+    "geopolitics": [
+        "You are a geopolitical risk analyst for a trading firm. Plain text. What are the key developments and how do they impact markets — safe havens, oil, currency flows? 4-5 sentences. Emojis.",
+        "You are an intelligence analyst briefing traders on geopolitical risk. Plain text. Cover the top 3-4 stories: what's happening, who's affected, and the market risk (escalation / de-escalation). Emojis.",
+        "You are a foreign affairs expert. Plain text. Pick the most significant geopolitical developments and explain in plain terms what they mean for traders — which markets react, which safe havens benefit. 4-6 sentences. Emojis.",
+    ],
+    "markets": [
+        "You are a market intelligence analyst. Plain text. Summarize the top stories on trade, commodities and economic data. For each: what happened + market impact. 4-5 bullet-style lines. Emojis.",
+        "You are a commodities and trade analyst. Plain text. What are the dominant themes in today's market news? Highlight supply/demand shifts, tariff moves, or economic surprises. 4-5 sentences. Emojis.",
+        "You are a global markets analyst. Plain text. Pick the 3-4 most significant market/trade stories and explain what they signal — supply chain shifts, commodity trends, economic direction. Be specific. Emojis.",
+    ],
+}
+
 def get_ai_summary(headlines, category):
     if not headlines:
         return "No recent news found for this category."
     try:
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-        prompts = {
-            "ukraine": "You are a Ukrainian news editor. Based on these headlines write a structured summary in Ukrainian language. Format it in 3 sections: ⚔️ ВІЙСЬКОВІ ДІЇ (military updates), 🏛 ПОЛІТИКА (political news), 💰 ЕКОНОМІКА (economic news). Each section 2-3 sentences. Use emojis. Plain text only.",
-            "greece": "Σύνοψε αυτές τις ειδήσεις για την Ελλάδα. Γράψε στα Ελληνικά. 5-8 σύντομες παράγραφοι με emoji.",
-            "finance": "Summarize these financial news for traders. 5-8 short bullet points. Simple English. Use emojis.",
-            "geopolitics": "Summarize these geopolitical news. 5-8 short bullet points. Simple English. Use emojis.",
-            "markets": "Summarize these market/trade news for investors. 5-8 short bullet points. Simple English. Use emojis."
-        }
+        styles = SUMMARY_STYLES.get(category, [
+            "Summarize these headlines for traders. Pick the most important stories and explain each clearly. Use emojis. Plain text."
+        ])
+        system_prompt = random.choice(styles)
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=400,
-            messages=[{"role":"user","content":prompts.get(category,"Summarize these headlines for traders. Use emojis.")+"\n\nHeadlines:\n"+"\n".join(headlines)}]
+            max_tokens=450,
+            system=system_prompt,
+            messages=[{"role":"user","content":"Headlines:\n"+"\n".join(headlines)}]
         )
         return message.content[0].text
     except Exception as e:
@@ -216,13 +242,19 @@ def _fetch_sentiment():
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = (
-        "📰 Welcome to the Nova News Bot\n\n"
-        "Stay ahead of the markets with real time, on demand financial intelligence, "
-        "global news, and sentiment analysis. Customize your feed and access the exact "
-        "insights you need, precisely when you need them.\n\n"
-        "🧠 Powered by AI to filter the noise and deliver high impact market data.\n\n"
-        "👇 Select a category below to fetch the latest updates:\n\n"
-        "⚠️ All content is for informational purposes only and does not constitute financial advice."
+        "📰 Nova News Bot\n\n"
+        "On-demand market intelligence, filtered by AI. Pick a category and get a briefing in seconds — "
+        "no noise, no clickbait, just the stories that actually move markets.\n\n"
+        "What's inside:\n"
+        "💹 Finance — central banks, rates, macro data, forex & crypto moves\n"
+        "🌍 Geopolitics — wars, sanctions, elections, diplomacy and their market impact\n"
+        "🛒 Markets — trade, commodities, supply chains, economic indicators\n"
+        "🇺🇦 Ukraine — live war updates from multiple sources\n"
+        "🇬🇷 Ελλάδα — Greek financial and economic news\n"
+        "📅 Calendar — today's high-impact economic events\n"
+        "🧠 Sentiment — Fear & Greed Index, live\n\n"
+        "👇 Choose a category:\n\n"
+        "⚠️ All content is for informational purposes only. Not financial advice."
     )
     await update.message.reply_text(msg, reply_markup=MAIN_MENU)
 
@@ -294,10 +326,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return None
             try:
                 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+                latest_styles = [
+                    "You are a financial news editor. Plain text only. Pick the 5 most market-relevant headlines and write each as one punchy line with an emoji. End with one sentence on what's dominating the tape right now.",
+                    "You are a senior forex analyst. Plain text. From these headlines pick the 3-4 most important for traders. For each: what happened and what's the market implication. Be sharp. Emojis.",
+                    "You are a trading desk analyst sharing a quick news hit. Plain text. Lead with the biggest headline, then list 3-4 others. Flag anything high-impact. Short lines, emojis.",
+                ]
+                system = random.choice(latest_styles)
                 message = client.messages.create(
                     model="claude-haiku-4-5-20251001",
-                    max_tokens=300,
-                    messages=[{"role":"user","content":"Pick 5 most important headlines for traders. One short line each with emoji. Simple English.\n\n"+"\n".join(all_h[:8])}]
+                    max_tokens=350,
+                    system=system,
+                    messages=[{"role":"user","content":"Headlines:\n\n"+"\n".join(all_h[:8])}]
                 )
                 return message.content[0].text
             except Exception as e:

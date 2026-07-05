@@ -159,19 +159,119 @@ def get_market_overview():
     return "\n".join(result)
 
 def get_education(topic):
+    system = (
+        "You are a trading educator at Trading Nova. Write in plain text only — "
+        "no markdown, no asterisks, no bold/italic formatting. Use emojis naturally throughout. "
+        "Be direct, practical, and engaging. Real examples over theory. "
+        "Write like a mentor talking to a student, not a textbook. Never be generic."
+    )
     prompts = {
-        "forex": "Explain Forex trading for a beginner. Max 200 words. Use emojis. Plain text only.",
-        "crypto": "Explain cryptocurrency trading for a beginner. Max 200 words. Use emojis. Plain text only.",
-        "cfd": "Explain CFD trading for a beginner. Max 200 words. Use emojis. Plain text only.",
-        "smc": "Explain Smart Money Concepts: Order Blocks, FVG, BOS, CHoCH. Max 200 words. Use emojis. Plain text only.",
-        "risk": "Explain risk management in trading. Max 200 words. Use emojis. Plain text only.",
-        "indicators": "Explain RSI, MACD, EMA, Bollinger Bands. Max 200 words. Use emojis. Plain text only.",
-        "patterns": "Explain chart patterns: Head and Shoulders, Double Top/Bottom, Triangle, Flag. Max 200 words. Use emojis. Plain text only.",
-        "glossary": "Trading glossary: Pip, Lot, Leverage, Spread, Margin, Swap, Liquidity, Volatility, Bull/Bear. Use emojis. Plain text only.",
-        "cryptotrading": "Explain crypto trading: spot vs futures, leverage, exchanges. Max 200 words. Use emojis. Plain text only.",
-        "defi": "Explain DeFi, DEX vs CEX, staking, NFTs. Max 200 words. Use emojis. Plain text only.",
-        "psychology": "Explain trading psychology: FOMO, revenge trading, discipline. Max 200 words. Use emojis. Plain text only.",
-        "howtostart": "Step by step guide to start trading for a complete beginner. Max 200 words. Use emojis. Plain text only.",
+        "forex": (
+            "Teach a complete beginner what Forex trading is. Cover: what it is, how currency pairs work "
+            "(use EUR/USD as an example), what actually moves prices (interest rates, economic data, capital flows), "
+            "and why so many retail traders participate. Give one concrete real-world example. "
+            "Engaging, practical, 180-200 words. Use emojis."
+        ),
+        "crypto": (
+            "Teach a beginner about cryptocurrency trading. Cover: how crypto markets differ from forex "
+            "(24/7, high volatility, sentiment-driven), Bitcoin vs altcoins and how BTC dominance affects the market, "
+            "what actually moves crypto prices (news, on-chain data, macro), and one honest insight about the risk. "
+            "180-200 words. Emojis."
+        ),
+        "cfd": (
+            "Explain CFD (Contract for Difference) trading so a beginner truly understands it. Cover: what a CFD actually is, "
+            "how you profit whether price goes up OR down, how leverage amplifies both gains and losses, "
+            "why traders use CFDs instead of buying the asset directly, and the key risks to know before starting. "
+            "Use a simple real-world analogy. 180-200 words. Emojis."
+        ),
+        "smc": (
+            "Teach Smart Money Concepts as used by professional traders. Cover: who Smart Money is (banks, hedge funds, institutions) "
+            "and why they move markets differently than retail traders, "
+            "Break of Structure (BOS) — what it means when price breaks a key high or low, "
+            "Change of Character (CHoCH) — the first sign a trend is reversing, "
+            "Order Blocks — where institutions placed large orders that act as future support/resistance, "
+            "Fair Value Gaps (FVG) — price imbalances that tend to get filled. "
+            "Explain how retail traders use this to trade WITH institutions, not against them. "
+            "Be specific. 180-200 words. Emojis."
+        ),
+        "risk": (
+            "Teach risk management as the single most important skill in trading. Cover: "
+            "the 1-2% rule (never risk more than 1-2% of your account on one trade and why), "
+            "position sizing — how to calculate your lot size based on account balance, risk %, and stop loss distance, "
+            "the Risk:Reward ratio and why a minimum 1:2 R:R matters even with a 40% win rate, "
+            "and the psychology of protecting capital first, profits second. "
+            "Include one concrete calculation example. Be direct — this is what separates traders who last from those who don't. "
+            "180-200 words. Emojis."
+        ),
+        "indicators": (
+            "Explain the 4 most important technical indicators and how traders actually use them — not just what they are. "
+            "RSI: what overbought/oversold really means and when NOT to fade it, "
+            "MACD: how the crossover and histogram tell you about momentum shifts, "
+            "EMA: why dynamic levels matter more than static ones and the golden/death cross, "
+            "Bollinger Bands: reading volatility compression (squeeze) and breakouts. "
+            "Most importantly: explain how these 4 work TOGETHER to confirm a signal, not as isolated tools. "
+            "180-200 words. Emojis."
+        ),
+        "patterns": (
+            "Teach the most reliable chart patterns and WHY they work, not just what they look like. "
+            "Head & Shoulders: what the left shoulder, head, and right shoulder represent in terms of buyer exhaustion, "
+            "Double Top/Bottom: why the second test of a level is so significant, "
+            "Triangle (ascending/descending/symmetrical): what the tightening range signals about the coming move, "
+            "Flag/Pennant: why strong momentum after a pause tends to continue. "
+            "For each: entry, invalidation level, and the psychological reason behind the pattern. "
+            "180-200 words. Emojis."
+        ),
+        "glossary": (
+            "Write a trading glossary every beginner must memorize before they risk real money. "
+            "Define each term practically — not dictionary definitions, but what it means IN A TRADE: "
+            "Pip (the smallest price move and why it matters for P&L), "
+            "Lot size (standard/mini/micro and how it connects to pip value), "
+            "Leverage (power and danger in one number), "
+            "Spread (the hidden cost of every trade), "
+            "Margin and Margin Call (what happens when a trade goes wrong), "
+            "Swap/Rollover (overnight cost or credit), "
+            "Liquidity (why some pairs are safer to trade), "
+            "Volatility (risk and opportunity), "
+            "Bull/Bear market (more than just up/down). "
+            "180-200 words. Emojis."
+        ),
+        "cryptotrading": (
+            "Explain how crypto trading actually works for someone ready to go beyond just buying and holding. "
+            "Cover: spot trading (owning the asset) vs futures/perpetuals (trading the price without owning), "
+            "how leverage in crypto is even more dangerous than in forex and why, "
+            "CEX vs DEX — centralized vs decentralized exchanges and the trade-offs, "
+            "Bitcoin dominance and how it affects altcoin seasons, "
+            "and 3 specific things that make crypto fundamentally different from forex trading. "
+            "Be honest about the risk-reward reality. 180-200 words. Emojis."
+        ),
+        "defi": (
+            "Explain DeFi for someone with a trading background who wants to understand the space. "
+            "Cover: what DeFi actually is vs traditional finance and what problem it solves, "
+            "DEX vs CEX — the difference in custody, fees, and slippage, "
+            "liquidity pools: how they work, what impermanent loss is, and why people still provide liquidity, "
+            "staking: what you're actually doing and the difference between real yield and inflation rewards, "
+            "NFTs: what they represent beyond the hype and where actual utility exists. "
+            "Be practical — what does a trader need to know to navigate this space safely? 180-200 words. Emojis."
+        ),
+        "psychology": (
+            "Teach trading psychology — the real reason most traders fail, and it's not their strategy. "
+            "Cover: FOMO and how chasing entries after missing a move is one of the most expensive habits in trading, "
+            "revenge trading — the emotional spiral after a loss that turns one bad trade into an account blowup, "
+            "discipline — following your plan when your gut screams otherwise, "
+            "process vs outcome — understanding that a well-executed trade that loses is still a good trade, "
+            "and one specific mental technique professionals use to stay neutral. "
+            "Use a scenario most traders will immediately recognise. 180-200 words. Emojis."
+        ),
+        "howtostart": (
+            "Write an honest, step-by-step guide for someone who wants to start trading today. "
+            "Step 1 — Education first: what to study and in what order (markets, risk, then strategy), "
+            "Step 2 — Choose a broker: what actually matters (regulation, spreads, platform), "
+            "Step 3 — Demo trading: what to do on demo and for how long before going live, "
+            "Step 4 — Risk management before your first live trade: the one rule you cannot break, "
+            "Step 5 — Start with micro lots: why small size is not about money, it's about building discipline. "
+            "Be honest about the timeline — profitable trading takes months to years, not days. "
+            "180-200 words. Emojis."
+        ),
     }
     prompt_text = prompts.get(topic)
     if not prompt_text:
@@ -180,7 +280,8 @@ def get_education(topic):
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=500,
+            max_tokens=600,
+            system=system,
             messages=[{"role": "user", "content": prompt_text}]
         )
         return message.content[0].text
@@ -214,26 +315,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif text == "\U0001f331 I'm a Beginner":
         msg = (
-            "Perfect! Here's your beginner roadmap \U0001f5fa️\n\n"
-            "1️⃣ Forex Basics — understand how currency markets work\n"
-            "2️⃣ Risk Management — the #1 skill every trader needs\n"
-            "3️⃣ What is SMC? — how institutions move the market\n"
-            "4️⃣ Market Overview — check live prices\n"
-            "5️⃣ Join our Signals Bot — follow real trades as they happen\n\n"
-            "Take it step by step. Tap \U0001f4da Education below to start \U0001f447"
+            "Perfect starting point \U0001f5fa️\n\n"
+            "Most people who lose money in trading skip the fundamentals. Don't be that trader.\n\n"
+            "Here's the order that actually works:\n\n"
+            "1️⃣ Forex Basics — understand what you're actually trading and why prices move\n"
+            "2️⃣ Risk Management — this alone separates traders who last from those who don't\n"
+            "3️⃣ Chart Patterns + Indicators — learn to read what the market is doing\n"
+            "4️⃣ Smart Money Concepts — how institutions move price and how to follow them\n"
+            "5️⃣ Signals Bot — watch real trades with Entry, SL & TP as they happen\n\n"
+            "One topic at a time. Tap \U0001f4da Education below \U0001f447"
         )
         await update.message.reply_text(msg, reply_markup=main_menu())
 
     elif text == "\U0001f4c8 I'm Experienced":
         msg = (
-            "Welcome back, trader \U0001f4bc\n\n"
-            "Here's what's most useful for you:\n\n"
-            "\U0001f4ca Market Overview — live prices for 14 pairs\n"
-            "\U0001f4c8 Signals Bot — BUY/SELL alerts with Entry, SL & TP\n"
-            "\U0001f4f0 News Bot — AI-filtered news on demand by category\n"
-            "\U0001f4c5 Economic Calendar — plan around high-impact events\n"
-            "\U0001f9e0 Daily Sentiment — Fear & Greed, DXY, VIX\n\n"
-            "Jump straight into our ecosystem \U0001f447"
+            "Good. Here's what the ecosystem gives you \U0001f4bc\n\n"
+            "\U0001f4ca Live prices — 14 pairs updated in real time\n"
+            "\U0001f4c8 Signals — BUY/SELL with Entry, SL & TP, sent only when a real setup exists\n"
+            "\U0001f4f0 News — AI-filtered briefings 6x daily, no noise\n"
+            "\U0001f4c5 Economic Calendar — know what's moving markets before it happens\n"
+            "\U0001f9e0 Daily Sentiment — Fear & Greed, DXY, Gold, VIX in one read\n"
+            "\U0001f4ca MTF Analysis — 15m/1H/4H alignment check for any pair on demand\n\n"
+            "Join the channels below and you're set \U0001f447"
         )
         await update.message.reply_text(msg, reply_markup=community_links())
 
@@ -245,9 +348,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logging.warning("Education photo send failed: %s", e)
             await update.message.reply_text(edu_caption, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("TMGM Academy", url="https://www.tmgm.com/en/academy/overview")]]))
-        await update.message.reply_text("Choose a topic:", reply_markup=edu_menu())
+        await update.message.reply_text("What do you want to learn today?", reply_markup=edu_menu())
     elif text == "\U0001f4b9 Brokers":
-        msg = ("💹 TMGM | Trade. Markets. Growth. Mastery.\n\nTMGM is an institutional-grade broker offering world-class trading conditions.\n\n📌 Key Features:\n- 12,000+ instruments (Forex, Stocks, Indices, Commodities, Crypto)\n- Leverage up to 1:500\n- Ultra-low spreads from 0.0 pips\n- MT4 & MT5 platforms\n- Regulated: ASIC (Australia) & VFSC\n- Fast execution & deep liquidity\n- 24/7 multilingual support\n\n🎯 Refer Code: IB1750034233G\n\nOpen your account and start trading with institutional conditions:")
+        msg = ("💹 TMGM | Trade. Markets. Growth. Mastery.\n\nThe broker powering the Nova ecosystem. Regulated, institutional-grade, and trusted by traders worldwide.\n\n📌 12,000+ instruments — Forex, Stocks, Indices, Commodities, Crypto\n📌 Spreads from 0.0 pips — on major pairs\n📌 Leverage up to 1:500\n📌 MT4 & MT5 — fully supported\n📌 ASIC & VFSC regulated\n📌 Fast execution, deep liquidity\n📌 24/7 multilingual support\n\n🎯 Referral Code: IB1750034233G\n\nOpen your account and unlock the full Nova ecosystem:")
         try:
             with open("/root/tradingbot/tmgm_logo.png", "rb") as photo:
                 await context.bot.send_photo(chat_id=update.effective_chat.id, photo=photo, caption=msg, reply_markup=broker_links())
@@ -264,29 +367,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "\U0001f4f2 Our Community":
         msg = (
             "\U0001f4f2 THE NOVA ECOSYSTEM\n\n"
-            "Everything below is free when you trade through our partner brokers:\n\n"
-            "\U0001f4c8 Signals Bot — live BUY/SELL signals 24/7\n"
-            "\U0001f4f0 News Bot — AI briefings 5x daily, by category\n"
-            "\U0001f4c5 Calendar alerts every morning at 08:00\n"
-            "\U0001f9e0 Daily market sentiment reports\n"
-            "\U0001f3af Weekly backtest results every Sunday\n\n"
-            "\U0001f447 Tap to join:"
+            "One ecosystem. Everything a trader needs, in one place.\n\n"
+            "\U0001f4c8 Signals — live BUY/SELL signals with Entry, SL & TP. Sent only when a real setup is detected, not on a schedule.\n"
+            "\U0001f4f0 News — AI-filtered market intelligence 6x daily. No noise, no clickbait. Just what matters for your positions.\n"
+            "\U0001f4c5 Calendar — high-impact economic events every morning at 08:00 so you're never caught off guard.\n"
+            "\U0001f9e0 Sentiment — daily read on Fear & Greed, DXY, Gold and VIX. Know what the market is feeling before you trade.\n"
+            "\U0001f4ca Updates — daily trading tips, psychology insights, and weekly market previews.\n\n"
+            "\U0001f447 Join below:"
         )
         await update.message.reply_text(msg, reply_markup=community_links())
     elif text == "\U0001f4b9 TMGM Info":
         msg = (
             "\U0001f4b9 TMGM | Trade. Markets. Growth. Mastery.\n\n"
-            "TMGM is an institutional-grade broker offering world-class trading conditions.\n\n"
-            "\U0001f4cc Key Features:\n"
-            "- 12,000+ instruments (Forex, Stocks, Indices, Commodities, Crypto)\n"
-            "- Leverage up to 1:500\n"
-            "- Ultra-low spreads from 0.0 pips\n"
-            "- MT4 & MT5 platforms\n"
-            "- Regulated: ASIC (Australia) & VFSC\n"
-            "- Fast execution & deep liquidity\n"
-            "- 24/7 multilingual support\n\n"
-            "\U0001f3af Refer Code: IB1750034233G\n\n"
-            "Open your account and start trading with institutional conditions:"
+            "TMGM is the broker behind the Nova ecosystem — regulated, institutional-grade, and built for serious traders.\n\n"
+            "What sets them apart:\n\n"
+            "📌 12,000+ instruments — Forex, Stocks, Indices, Commodities, Crypto. One account, all markets.\n"
+            "📌 Spreads from 0.0 pips — on major pairs, no hidden markups.\n"
+            "📌 Leverage up to 1:500 — professional conditions for those who know how to use it.\n"
+            "📌 MT4 & MT5 — the platforms traders actually use, fully supported.\n"
+            "📌 ASIC regulated (Australia) + VFSC — your capital is protected.\n"
+            "📌 Fast execution, deep liquidity — no requotes, no slippage games.\n"
+            "📌 24/7 multilingual support — real people, real answers.\n\n"
+            "\U0001f3af Referral Code: IB1750034233G\n\n"
+            "Open your live account and unlock the full Nova ecosystem:"
         )
         try:
             with open("/root/tradingbot/tmgm_logo.png", "rb") as photo:
@@ -297,14 +400,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "\U0001f381 What You Get":
         msg = (
             "\U0001f381 WHAT YOU GET — 100% FREE\n\n"
-            "Open a TMGM account through our referral link and unlock:\n\n"
-            "\U0001f4c8 Trading Signals — 24/7 BUY/SELL for Gold, BTC & Forex\n"
-            "\U0001f4f0 News Briefings — AI-filtered, 5x daily\n"
-            "\U0001f9e0 Market Sentiment — daily Fear & Greed + DXY + VIX\n"
-            "\U0001f4c5 Economic Calendar — every morning at 08:00\n"
-            "\U0001f3af Performance Tracker — live win rate & P&L\n"
-            "\U0001f4ca Weekly Backtests — strategy results every Sunday\n\n"
-            "Open your account in under 3 minutes \U0001f447"
+            "Open a TMGM account through our referral link and get full access to the Nova ecosystem at no cost:\n\n"
+            "\U0001f4c8 Trading Signals — BUY/SELL alerts for 12 pairs including Gold, BTC, EUR/USD & more. Each signal includes Entry, SL and TP. Sent only when a high-quality setup is detected.\n\n"
+            "\U0001f4f0 News Intelligence — AI-filtered market briefings 6x per day. No noise. Geopolitics, macro, commodities — filtered to what actually moves your trades.\n\n"
+            "\U0001f9e0 Market Sentiment — daily report on Fear & Greed, DXY direction, Gold trend and VIX. Know the macro mood before you open a position.\n\n"
+            "\U0001f4c5 Economic Calendar — high-impact events every morning at 08:00 so you can plan around volatility, not be surprised by it.\n\n"
+            "\U0001f4ca Analysis on Demand — ask for a live AI analysis of any pair, any time, directly in the Signals Bot.\n\n"
+            "Takes 3 minutes to open an account \U0001f447"
         )
         await update.message.reply_text(msg, reply_markup=broker_links())
     elif text == "\U0001f4d6 Forex Basics":
