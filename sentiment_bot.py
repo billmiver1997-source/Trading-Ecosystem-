@@ -30,7 +30,6 @@ def send_channel(msg):
         r.raise_for_status()
     except Exception as e:
         print(f"send_channel error: {e}")
-        raise
 
 
 def get_fear_greed():

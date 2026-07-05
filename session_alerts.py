@@ -23,7 +23,6 @@ def send_all(msg):
         r.raise_for_status()
     except Exception as e:
         print(f"send_all error: {e}")
-        raise
 
 def get_session_status(now_hour, now_min):
     active = []

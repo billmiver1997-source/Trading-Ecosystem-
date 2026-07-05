@@ -463,6 +463,8 @@ def handle_message(chat_id, text, username, first_name=""):
                 send_typing(chat_id)
                 send_message(chat_id, get_analysis(v), main_menu())
                 return
+        # Emoji detected but no matching pair found — show pair picker
+        send_message(chat_id, "Choose a pair:", pairs_menu())
 
     elif text_lower in ["🧮 risk calculator", "/risk"]:
         send_message(chat_id, "🧮 RISK CALCULATOR\n\nSend your details like this:\n\nBALANCE: 1000\nRISK: 1\nSL PIPS: 20\nPAIR: EURUSD", main_menu())
@@ -561,7 +563,8 @@ def handle_message(chat_id, text, username, first_name=""):
                         bias = "NEUTRAL 🟡"
                     results.append(tf+": "+bias+" | RSI:"+str(round(rsi,1)))
                 agreement = len(set([r.split(":")[1].split("|")[0].strip() for r in results]))
-                overall = "🟢 ALIGNED - Strong signal!" if agreement == 1 else "🟡 MIXED - Wait for alignment"
+                # Need at least 2 TFs to declare alignment; a single TF result is never "aligned"
+                overall = "🟢 ALIGNED - Strong signal!" if (agreement == 1 and len(results) >= 2) else "🟡 MIXED - Wait for alignment"
                 tz = pytz.timezone("Europe/Athens")
                 now = datetime.now(tz).strftime("%d/%m/%Y %H:%M")
                 msg = "📊 MTF ANALYSIS\n"+pair_name+" | "+now+"\n\n"
