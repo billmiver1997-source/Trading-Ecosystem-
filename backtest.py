@@ -73,20 +73,24 @@ def backtest_pair(name, symbol):
 
     trend_4h = get_trend_4h(symbol)
 
-    close = df["Close"]; high = df["High"]; low = df["Low"]
+    close = df["Close"]; high = df["High"]; low = df["Low"]; open_ = df["Open"]
     ema20 = close.ewm(span=20).mean()
     ema50 = close.ewm(span=50).mean()
     ema200 = close.ewm(span=200).mean()
     macd = close.ewm(span=12).mean() - close.ewm(span=26).mean()
-    signal_line = macd.ewm(span=9).mean()  # renamed from sl to avoid confusion with stop loss
+    signal_line = macd.ewm(span=9).mean()
     hist = macd - signal_line
     delta = close.diff()
     gain = delta.clip(lower=0).rolling(14).mean()
     loss = -delta.clip(upper=0).rolling(14).mean()
-    loss = loss.replace(0, 1e-10)  # avoid div-by-zero on all-green windows
+    loss = loss.replace(0, 1e-10)
     rsi = 100 - (100 / (1 + gain / loss))
     tr = pd.concat([high-low,(high-close.shift()).abs(),(low-close.shift()).abs()],axis=1).max(axis=1)
     atr = tr.rolling(14).mean()
+    bb_mean = close.rolling(20).mean()
+    bb_std = close.rolling(20).std()
+    bb_upper = bb_mean + 2 * bb_std
+    bb_lower = bb_mean - 2 * bb_std
 
     wins = losses = timeouts = 0
     total_pips = 0.0
@@ -95,35 +99,57 @@ def backtest_pair(name, symbol):
         p = close.iloc[i]; a = atr.iloc[i]
         sb = se = 0
 
+        # 1. EMA alignment
         if ema20.iloc[i] > ema50.iloc[i] and p > ema200.iloc[i]: sb += 1
         if ema20.iloc[i] < ema50.iloc[i] and p < ema200.iloc[i]: se += 1
+        # 2. MACD momentum
         if macd.iloc[i] > signal_line.iloc[i] and hist.iloc[i] > hist.iloc[i-1]: sb += 1
         if macd.iloc[i] < signal_line.iloc[i] and hist.iloc[i] < hist.iloc[i-1]: se += 1
+        # 3. BOS
         sh = high.iloc[i-20:i].max(); slo = low.iloc[i-20:i].min()
         if p > sh: sb += 1
         if p < slo: se += 1
+        # 4. RSI
         if 50 < rsi.iloc[i] < 70: sb += 1
         if 30 < rsi.iloc[i] < 50: se += 1
+        # 5. Strong candle body (use candle at i, already closed in backtest)
+        c_range = high.iloc[i] - low.iloc[i]
+        c_body = abs(close.iloc[i] - open_.iloc[i])
+        body_ratio = c_body / c_range if c_range > 0 else 0
+        if close.iloc[i] > open_.iloc[i] and body_ratio > 0.5: sb += 1
+        if close.iloc[i] < open_.iloc[i] and body_ratio > 0.5: se += 1
+        # 6. Bollinger Band proximity
+        if p <= bb_lower.iloc[i] * 1.015: sb += 1
+        if p >= bb_upper.iloc[i] * 0.985: se += 1
+        # 7. Fibonacci golden pocket (50-61.8% of 20-bar range)
+        fib_range = sh - slo
+        if fib_range > 0:
+            fib_bull_50 = sh - fib_range * 0.50
+            fib_bull_618 = sh - fib_range * 0.618
+            fib_tol = a * 0.75
+            if (fib_bull_618 - fib_tol) <= p <= (fib_bull_50 + fib_tol): sb += 1
+            fib_bear_50 = slo + fib_range * 0.50
+            fib_bear_618 = slo + fib_range * 0.618
+            if (fib_bear_50 - fib_tol) <= p <= (fib_bear_618 + fib_tol): se += 1
 
+        # Threshold: 4/7 (mirrors live bot's 4/9 philosophy — OB/FVG not backtest-safe)
         if sb >= 4 and trend_4h == "BULL":
-            tp = p + a*3; sl2 = p - a*1.5
+            sl2 = p - a*1.5; tp = p + a*3
             resolved = False
             for j in range(i+1, min(i+61, len(df))):
-                # Check SL first: if both SL and TP hit on same candle (gap), count as loss
                 if low.iloc[j] <= sl2: losses+=1; total_pips-=abs(p-sl2); resolved=True; break
                 if high.iloc[j] >= tp: wins+=1; total_pips+=abs(tp-p); resolved=True; break
             if not resolved:
-                timeouts += 1  # trade expired without hitting TP or SL
+                timeouts += 1
 
         elif se >= 4 and trend_4h == "BEAR":
-            tp = p - a*3; sl2 = p + a*1.5
+            sl2 = p + a*1.5; tp = p - a*3
             resolved = False
             for j in range(i+1, min(i+61, len(df))):
-                # Check SL first: if both SL and TP hit on same candle (gap), count as loss
                 if high.iloc[j] >= sl2: losses+=1; total_pips-=abs(sl2-p); resolved=True; break
                 if low.iloc[j] <= tp: wins+=1; total_pips+=abs(p-tp); resolved=True; break
             if not resolved:
-                timeouts += 1  # trade expired without hitting TP or SL
+                timeouts += 1
 
     total = wins + losses + timeouts
     winrate = round(wins/total*100, 1) if total > 0 else 0
@@ -154,19 +180,22 @@ def run_backtest():
     total = total_w + total_l + total_t
     overall_wr = round(total_w/total*100, 1) if total > 0 else 0
 
-    lines = ["📊 BACKTEST REPORT (60d — SMC+EMA+HTF)\n🕔 "+now+"\n"]
-    lines.append("Overall Win Rate: "+str(overall_wr)+"%")
-    lines.append("Total: "+str(total_w)+"W / "+str(total_l)+"L\n")
+    lines = ["📊 WEEKLY BACKTEST REPORT\n🕔 " + now + " | Last 60 days\n"]
+    overall_pips = sum(r["pips"] for r in results)
+    pips_sign = "+" if overall_pips >= 0 else ""
+    lines.append("📈 Overall Win Rate: " + str(overall_wr) + "%")
+    lines.append("✅ " + str(total_w) + "W  ❌ " + str(total_l) + "L  ⏳ " + str(total_t) + "T")
+    lines.append("💰 Net Pips: " + pips_sign + str(round(overall_pips, 2)) + "\n")
 
     for r in results:
         emoji = "🟢" if r["winrate"] >= 55 else "🟡" if r["winrate"] >= 45 else "🔴"
         pips_str = "+" if r["pips"] > 0 else ""
-        timeout_str = ("/"+str(r.get("timeouts",0))+"T") if r.get("timeouts",0) else ""
-        lines.append(emoji+" "+r["name"]+": "+str(r["winrate"])+"% ("+str(r["wins"])+"W/"+str(r["losses"])+"L"+timeout_str+") | "+pips_str+str(r["pips"])+" pips")
+        timeout_str = ("/" + str(r.get("timeouts", 0)) + "T") if r.get("timeouts", 0) else ""
+        lines.append(emoji + " " + r["name"] + ": " + str(r["winrate"]) + "% (" + str(r["wins"]) + "W/" + str(r["losses"]) + "L" + timeout_str + ") | " + pips_str + str(r["pips"]) + " pips")
 
     best = results[0]
-    lines.append("\n🎯 Best: "+best["name"]+" ("+str(best["winrate"])+"% | "+str(best["signals"])+" signals)")
-    lines.append("Strategy: SMC + EMA200 + MACD + HTF 4H | Score>=4/4 | R:R 1:2")
+    lines.append("\n🏆 Best pair: " + best["name"] + " (" + str(best["winrate"]) + "% | " + str(best["signals"]) + " signals)")
+    lines.append("Strategy: SMC + Fibonacci + BB + EMA200 + 4H HTF | 4/7 score | R:R 1:2")
 
     send_all("\n".join(lines))
     print("Backtest report sent!")

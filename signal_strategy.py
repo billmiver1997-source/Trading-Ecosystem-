@@ -36,6 +36,7 @@ ALL_PAIRS = {
 }
 
 CRYPTO_PAIRS = ["BTC/USD", "SOL/USD"]
+ASIAN_PAIRS = {"XAU/USD", "USD/JPY", "AUD/USD", "NZD/USD"}
 
 PAIR_EMOJIS = {
     "USD/CHF": "\U0001f1fa\U0001f1f8", "AUD/USD": "\U0001f1e6\U0001f1fa",
@@ -125,11 +126,18 @@ def send_signal(msg):
 def is_trading_session():
     tz = pytz.timezone("Europe/Athens")
     now = datetime.now(tz)
-    hour = now.hour
     weekday = now.weekday()
     if weekday >= 5:
         return False
-    return 10 <= hour < 23
+    return 10 <= now.hour < 23
+
+def is_asian_session():
+    """Asian session 03:00-09:59 Athens — Gold, JPY, AUD, NZD active."""
+    tz = pytz.timezone("Europe/Athens")
+    now = datetime.now(tz)
+    if now.weekday() >= 5:
+        return False
+    return 3 <= now.hour < 10
 
 def get_data(symbol):
     try:
@@ -189,11 +197,33 @@ def find_poi(df, name):
     curr_ema50 = ema50.iloc[-1]
     curr_ema200 = ema200.iloc[-1]
 
+    # Bollinger Bands (20-period, 2 std dev)
+    bb_period = min(20, len(close) - 1)
+    bb_mean = close.iloc[-bb_period:].mean()
+    bb_std_val = close.iloc[-bb_period:].std()
+    bb_upper = bb_mean + 2 * bb_std_val
+    bb_lower = bb_mean - 2 * bb_std_val
+
     # Swing levels
     swing_high = high.iloc[-20:-1].max()
     swing_low = low.iloc[-20:-1].min()
     prev_swing_high = high.iloc[-40:-20].max()
     prev_swing_low = low.iloc[-40:-20].min()
+
+    # Fibonacci golden pocket (50–61.8% retracement of 20-bar range)
+    fib_range = swing_high - swing_low
+    fib_tol = atr * 0.75
+    fib_bull_zone = False
+    fib_bear_zone = False
+    if fib_range > 0:
+        # Bull: price pulled back 50–61.8% from the recent swing high
+        fib_bull_50 = swing_high - fib_range * 0.50
+        fib_bull_618 = swing_high - fib_range * 0.618
+        fib_bull_zone = (fib_bull_618 - fib_tol) <= price <= (fib_bull_50 + fib_tol)
+        # Bear: price bounced 50–61.8% from the recent swing low
+        fib_bear_50 = swing_low + fib_range * 0.50
+        fib_bear_618 = swing_low + fib_range * 0.618
+        fib_bear_zone = (fib_bear_50 - fib_tol) <= price <= (fib_bear_618 + fib_tol)
 
     # BOS
     bos_bull = price > swing_high
@@ -227,7 +257,7 @@ def find_poi(df, name):
             fvg_bear_zone = (round(df["High"].iloc[-i], 5), round(df["Low"].iloc[-i-2], 5))
             break
 
-    # BULL POI
+    # BULL POI scoring — 9 criteria
     bull_score = 0
     bull_reasons = []
     if curr_ema20 > curr_ema50 and price > curr_ema200:
@@ -251,8 +281,14 @@ def find_poi(df, name):
     if is_bull_body:
         bull_score += 1
         bull_reasons.append("Strong bullish candle")
+    if price <= bb_lower * 1.015:
+        bull_score += 1
+        bull_reasons.append("Bollinger Band support")
+    if fib_bull_zone:
+        bull_score += 1
+        bull_reasons.append("Fibonacci golden pocket")
 
-    # BEAR POI
+    # BEAR POI scoring — 9 criteria
     bear_score = 0
     bear_reasons = []
     if curr_ema20 < curr_ema50 and price < curr_ema200:
@@ -276,11 +312,22 @@ def find_poi(df, name):
     if is_bear_body:
         bear_score += 1
         bear_reasons.append("Strong bearish candle")
+    if price >= bb_upper * 0.985:
+        bear_score += 1
+        bear_reasons.append("Bollinger Band resistance")
+    if fib_bear_zone:
+        bear_score += 1
+        bear_reasons.append("Fibonacci golden pocket")
 
-    # When both sides score >= 5 (extremely rare), return the stronger bias
-    if bull_score >= 5 and (bear_score < 5 or bull_score >= bear_score):
-        sl = round(price - (atr * 1.5), 5)
-        tp = round(price + (atr * 3), 5)
+    # Threshold: 4/9. When both sides qualify, return the stronger one.
+    if bull_score >= 4 and (bear_score < 4 or bull_score >= bear_score):
+        # Smart SL: use OB/FVG bottom if it gives a tighter zone; else ATR-based
+        sl = round(price - atr * 1.5, 5)
+        if ob_bull_zone and ob_bull_zone[0] > price - atr * 2:
+            sl = round(ob_bull_zone[0] - atr * 0.3, 5)
+        elif fvg_bull_zone and fvg_bull_zone[0] > price - atr * 2:
+            sl = round(fvg_bull_zone[0] - atr * 0.3, 5)
+        tp = round(price + abs(price - sl) * 2, 5)
         zone_low = round(price - atr * 0.3, 5)
         zone_high = round(price + atr * 0.3, 5)
         return {
@@ -296,9 +343,14 @@ def find_poi(df, name):
             "reasons": bull_reasons[:3]
         }
 
-    if bear_score >= 5:
-        sl = round(price + (atr * 1.5), 5)
-        tp = round(price - (atr * 3), 5)
+    if bear_score >= 4:
+        # Smart SL: use OB/FVG top if it gives a tighter zone
+        sl = round(price + atr * 1.5, 5)
+        if ob_bear_zone and ob_bear_zone[1] < price + atr * 2:
+            sl = round(ob_bear_zone[1] + atr * 0.3, 5)
+        elif fvg_bear_zone and fvg_bear_zone[1] < price + atr * 2:
+            sl = round(fvg_bear_zone[1] + atr * 0.3, 5)
+        tp = round(price - abs(sl - price) * 2, 5)
         zone_low = round(price - atr * 0.3, 5)
         zone_high = round(price + atr * 0.3, 5)
         return {
@@ -323,20 +375,30 @@ def format_poi(name, poi):
     tz = pytz.timezone("Europe/Athens")
     now = datetime.now(tz).strftime("%d/%m/%Y %H:%M")
     reasons = " | ".join(poi["reasons"])
-    rr = "1:2"
+    score = poi["score"]
+    if score >= 7:
+        quality = "\u2b50\u2b50\u2b50 PREMIUM"
+    elif score >= 5:
+        quality = "\u2b50\u2b50 STRONG"
+    else:
+        quality = "\u2b50 VALID"
+    action = "BUY" if poi["bias"] == "BULLISH" else "SELL"
+    sl_dist = abs(poi["sl"] - poi["price"])
+    rr_dist = abs(poi["tp"] - poi["price"])
+    rr_ratio = round(rr_dist / sl_dist, 1) if sl_dist > 0 else 2.0
     return (
-        "\U0001f3af POINT OF INTEREST\n\n"
-        +emoji+" "+name+" | "+now+"\n\n"
-        "\U0001f4cd Zone: "+str(poi["zone_low"])+" - "+str(poi["zone_high"])+"\n"
-        "\U0001f4ca Bias: "+poi["bias"]+" "+bias_emoji+"\n\n"
-        "\u26a1 Why: "+reasons+"\n\n"
-        +watch_emoji+" Watch for "+("BUY" if poi["bias"] == "BULLISH" else "SELL")+" reaction from this zone\n"
-        "SL: "+str(poi["sl"])+"\n"
-        "TP: "+str(poi["tp"])+"\n"
-        "R:R = "+rr+"\n\n"
-        "Score: "+str(poi["score"])+"/7 | ATR: "+str(round(poi["atr"],5))+"\n"
-        "Strategy: SMC + EMA + MACD | 1H\n\n"
-        "⚠️ For educational purposes only. Not financial advice. Trading involves significant risk of loss."
+        "\U0001f3af TRADING SETUP\n\n"
+        + emoji + " " + name + " | " + now + "\n\n"
+        "\U0001f4cd Zone: " + str(poi["zone_low"]) + " - " + str(poi["zone_high"]) + "\n"
+        "\U0001f4ca Bias: " + poi["bias"] + " " + bias_emoji + "\n"
+        "\U0001f3c6 Quality: " + quality + " (" + str(score) + "/9)\n\n"
+        "\u26a1 Why: " + reasons + "\n\n"
+        + watch_emoji + " " + action + " if price returns to zone\n"
+        "\U0001f6d1 SL: " + str(poi["sl"]) + "\n"
+        "\u2705 TP: " + str(poi["tp"]) + "\n"
+        "\U0001f4d0 R:R = 1:" + str(rr_ratio) + "\n\n"
+        "Strategy: SMC + Fibonacci + BB | 1H\n\n"
+        "\u26a0\ufe0f For educational purposes only. Not financial advice. Trading involves significant risk of loss."
     )
 
 def add_trade(name, poi):
@@ -417,12 +479,12 @@ def get_news_blocked_currencies():
         return set()
 
 def get_min_score(name):
-    """Returns required score threshold based on recent win rate for this pair."""
+    """Returns required score threshold (out of 9) based on recent win rate for this pair."""
     journal_file = "/root/tradingbot/journal.json"
     journal_lock = journal_file + ".lock"
     try:
         if not os.path.exists(journal_file):
-            return 5
+            return 4
         # Shared read lock prevents reading a torn file during a concurrent write
         with open(journal_lock, "a") as _lf:
             fcntl.flock(_lf, fcntl.LOCK_SH)
@@ -433,16 +495,16 @@ def get_min_score(name):
                 fcntl.flock(_lf, fcntl.LOCK_UN)
         pair_entries = [e for e in entries if e.get("pair") == name][-20:]
         if len(pair_entries) < 10:
-            return 5
+            return 4
         wins = sum(1 for e in pair_entries if e.get("result") == "WIN")
         win_rate = wins / len(pair_entries)
         if win_rate < 0.40:
-            print(f"Low win rate {round(win_rate*100)}% for {name} — raising threshold to 6")
-            return 6
-        return 5
+            print(f"Low win rate {round(win_rate*100)}% for {name} — raising threshold to 5")
+            return 5
+        return 4
     except Exception as e:
         print(f"Score threshold error: {e}")
-        return 5
+        return 4
 
 def main():
     print("POI Strategy started (1H timeframe)...")
@@ -452,10 +514,11 @@ def main():
     while True:
         try:
             in_session = is_trading_session()
-            if not in_session:
-                # Crypto pairs trade 24/7 — keep scanning them outside forex hours
-                # (ALL_PAIRS always includes BTC/USD and SOL/USD, so crypto is always present)
-                print("Outside forex session - scanning crypto only...")
+            in_asian = is_asian_session()
+            if not in_session and not in_asian:
+                print("Outside session - scanning crypto only...")
+            elif in_asian and not in_session:
+                print("Asian session - scanning Gold/JPY/AUD/NZD + crypto...")
 
             now_time = time.time()
             best_poi = None
@@ -480,7 +543,9 @@ def main():
 
             for name, symbol in ALL_PAIRS.items():
                 try:
-                    if not in_session and name not in CRYPTO_PAIRS:
+                    if not in_session and not in_asian and name not in CRYPTO_PAIRS:
+                        continue
+                    if in_asian and not in_session and name not in CRYPTO_PAIRS and name not in ASIAN_PAIRS:
                         continue
                     if name in open_pairs:
                         continue
