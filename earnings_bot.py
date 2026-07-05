@@ -32,14 +32,17 @@ def load_users():
     return []
 
 def send_all(msg):
+    sent = 0
     for chat_id in load_users():
         try:
             r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
                 json={"chat_id": chat_id, "text": msg[:4000]}, timeout=10)
             r.raise_for_status()
+            sent += 1
             time.sleep(0.1)
         except Exception as e:
             print(f"send_all error {chat_id}: {e}")
+    return sent
 
 def get_earnings():
     if not ALPHA_KEY:
@@ -130,8 +133,9 @@ def main():
                 earnings = get_earnings()
                 analysis = get_analysis(earnings)
                 msg = format_message(earnings, analysis)
-                send_all(msg)
-                sent_today = today
+                users = load_users()
+                if send_all(msg) > 0 or not users:
+                    sent_today = today
                 print("Earnings sent! "+str(len(earnings))+" companies")
                 time.sleep(600)
             else:

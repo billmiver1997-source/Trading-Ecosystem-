@@ -19,6 +19,11 @@ OWNER_ID = 8626233751
 PROFILES_FILE = "/root/tradingbot/user_profiles.json"
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 
+if not TOKEN:
+    raise RuntimeError("TELEGRAM_TOKEN_MAIN is not set in environment")
+if not ANTHROPIC_API_KEY:
+    raise RuntimeError("ANTHROPIC_API_KEY is not set in environment")
+
 def load_profiles():
     if os.path.exists(PROFILES_FILE):
         try:
@@ -29,21 +34,28 @@ def load_profiles():
     return {}
 
 def save_profile(user_id, username, first_name):
-    profiles = load_profiles()
-    if str(user_id) not in profiles:
-        tz = pytz.timezone("Europe/Athens")
-        profiles[str(user_id)] = {
-            "username": username or "",
-            "first_name": first_name or "",
-            "joined": datetime.now(tz).strftime("%d/%m/%Y %H:%M")
-        }
-        tmp = PROFILES_FILE + '.tmp'
+    import fcntl
+    lock_path = PROFILES_FILE + '.lock'
+    with open(lock_path, 'w') as _lf:
+        fcntl.flock(_lf, fcntl.LOCK_EX)
         try:
-            with open(tmp, 'w') as f:
-                json.dump(profiles, f)
-            os.replace(tmp, PROFILES_FILE)
-        except Exception as e:
-            logging.error("save_profile error: %s", e)
+            profiles = load_profiles()
+            if str(user_id) not in profiles:
+                tz = pytz.timezone("Europe/Athens")
+                profiles[str(user_id)] = {
+                    "username": username or "",
+                    "first_name": first_name or "",
+                    "joined": datetime.now(tz).strftime("%d/%m/%Y %H:%M")
+                }
+                tmp = PROFILES_FILE + '.tmp'
+                try:
+                    with open(tmp, 'w') as f:
+                        json.dump(profiles, f)
+                    os.replace(tmp, PROFILES_FILE)
+                except Exception as e:
+                    logging.error("save_profile error: %s", e)
+        finally:
+            fcntl.flock(_lf, fcntl.LOCK_UN)
 
 def get_welcome(name=""):
     greeting = f"Hey {name}! \U0001f44b" if name else "Hey! \U0001f44b"

@@ -91,21 +91,27 @@ def load_profiles():
     return {}
 
 def save_profile(user_id, username, first_name):
-    profiles = load_profiles()
-    if str(user_id) not in profiles:
-        tz = pytz.timezone("Europe/Athens")
-        profiles[str(user_id)] = {
-            "username": username or "",
-            "first_name": first_name or "",
-            "joined": datetime.now(tz).strftime("%d/%m/%Y %H:%M")
-        }
-        tmp = PROFILES_FILE + '.tmp'
+    lock_path = PROFILES_FILE + '.lock'
+    with open(lock_path, 'w') as _lf:
+        fcntl.flock(_lf, fcntl.LOCK_EX)
         try:
-            with open(tmp, 'w') as f:
-                json.dump(profiles, f)
-            os.replace(tmp, PROFILES_FILE)
-        except Exception as e:
-            print(f"save_profile error: {e}")
+            profiles = load_profiles()
+            if str(user_id) not in profiles:
+                tz = pytz.timezone("Europe/Athens")
+                profiles[str(user_id)] = {
+                    "username": username or "",
+                    "first_name": first_name or "",
+                    "joined": datetime.now(tz).strftime("%d/%m/%Y %H:%M")
+                }
+                tmp = PROFILES_FILE + '.tmp'
+                try:
+                    with open(tmp, 'w') as f:
+                        json.dump(profiles, f)
+                    os.replace(tmp, PROFILES_FILE)
+                except Exception as e:
+                    print(f"save_profile error: {e}")
+        finally:
+            fcntl.flock(_lf, fcntl.LOCK_UN)
 
 def answer_callback(callback_id):
     try:
@@ -249,7 +255,7 @@ def get_analysis(pair_name):
         )
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=250,
+            max_tokens=400,
             system=system_prompt,
             messages=[{"role":"user","content":prompt}]
         )
@@ -318,6 +324,15 @@ def set_commands():
                 {"command": "status", "description": "Trading status & open trades"},
                 {"command": "links", "description": "Our social links"},
                 {"command": "stats", "description": "Bot statistics (admin only)"},
+                {"command": "news", "description": "Latest market headlines"},
+                {"command": "calendar", "description": "Economic calendar today"},
+                {"command": "journal", "description": "Trade journal"},
+                {"command": "portfolio", "description": "Open signals P&L"},
+                {"command": "history", "description": "Signal history & stats"},
+                {"command": "sr", "description": "Support & Resistance levels"},
+                {"command": "risk", "description": "Risk/lot size calculator"},
+                {"command": "volatility", "description": "Volatility report"},
+                {"command": "mtf", "description": "Multi-timeframe analysis: /mtf EURUSD"},
             ]
         })
         r.raise_for_status()
@@ -326,6 +341,9 @@ def set_commands():
 
 def handle_message(chat_id, text, username, first_name=""):
     text = text.strip()
+    # Strip @botname suffix that Telegram appends to commands in group chats
+    if text.startswith("/") and "@" in text:
+        text = text.split("@")[0]
     text_lower = text.lower()
 
     if text_lower in ["/start", "start"] or text_lower.startswith("/start@"):
@@ -437,6 +455,7 @@ def handle_message(chat_id, text, username, first_name=""):
             message = client.messages.create(
                 model="claude-haiku-4-5-20251001",
                 max_tokens=400,
+                system="You are a financial news analyst. Respond in plain text only — no markdown, no asterisks, no bullet symbols.",
                 messages=[{"role":"user","content":"From these headlines pick the 5 most important for traders. Write each as one short line with an emoji. Then add one sentence summary. Simple English. Plain text.\n\n"+news_text}]
             )
             send_message(chat_id, "📰 LATEST NEWS\n🕔 "+now_str+"\n\n"+message.content[0].text+"\n\n📰 Full news: @tradingNovaNews", main_menu())
@@ -790,7 +809,6 @@ def handle_message(chat_id, text, username, first_name=""):
 
     elif text_lower in ["📜 signal history", "/history"]:
         try:
-            trades_file = "/root/tradingbot/open_trades.json"
             stats_file = "/root/tradingbot/trade_stats.json"
             last_signals_file = "/root/tradingbot/last_signals_smc.json"
             stats = {"wins":0,"losses":0}
@@ -835,14 +853,13 @@ def handle_message(chat_id, text, username, first_name=""):
                     df = yf.Ticker(symbol).history(period="30d", interval="1d")
                     if len(df) < 10: continue
                     price = df["Close"].iloc[-1]
-                    highs = df["High"].nlargest(3).values
-                    lows = df["Low"].nsmallest(3).values
-                    # R1 = nearest resistance (second-highest), R2 = farther (highest)
-                    r1 = round(highs[1],4)
-                    r2 = round(highs[0],4)
-                    # S1 = nearest support (second-lowest), S2 = farther (lowest)
-                    s1 = round(lows[1],4)
-                    s2 = round(lows[0],4)
+                    # Filter levels relative to current price so R/S labels are always correct
+                    res = sorted([h for h in df["High"].values if h > price])
+                    sup = sorted([l for l in df["Low"].values if l < price], reverse=True)
+                    r1 = round(res[0], 4) if len(res) > 0 else "N/A"
+                    r2 = round(res[1], 4) if len(res) > 1 else "N/A"
+                    s1 = round(sup[0], 4) if len(sup) > 0 else "N/A"
+                    s2 = round(sup[1], 4) if len(sup) > 1 else "N/A"
                     lines_sr.append("\n"+name+" | "+str(round(price,4)))
                     lines_sr.append("🔴 R2: "+str(r2)+" | R1: "+str(r1))
                     lines_sr.append("🟢 S1: "+str(s1)+" | S2: "+str(s2))
@@ -890,13 +907,6 @@ def main():
                         handle_message(cb_chat_id, "📅 calendar", cb_username, cb_first_name)
                     elif cb_data == "cmd_status":
                         handle_message(cb_chat_id, "📋 status", cb_username, cb_first_name)
-                    elif cb_data == "open_menu":
-                        try:
-                            requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/editMessageText",
-                                json={"chat_id": cb_chat_id, "message_id": callback.get("message",{}).get("message_id"), "text": WELCOME, "reply_markup": inline_main_menu()},
-                                timeout=10)
-                        except Exception as e:
-                            print(f"open_menu callback error: {e}")
         except Exception as e:
             print("Error: "+str(e))
             time.sleep(5)

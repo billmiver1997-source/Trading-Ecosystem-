@@ -76,10 +76,18 @@ def weekly_summary():
         send("\U0001f4c8 WEEKLY WRAP-UP\n\n"+text+"\n\n\U0001f4ca @novasignalschannel1")
 
 def main():
-    schedule.every().day.at("06:00", "Europe/Athens").do(daily_tip)
-    schedule.every().monday.at("05:00", "Europe/Athens").do(weekly_preview)
-    schedule.every().friday.at("17:00", "Europe/Athens").do(weekly_summary)
-    schedule.every().sunday.at("15:00", "Europe/Athens").do(psychology_post)
+    try:
+        schedule.every().day.at("06:00", "Europe/Athens").do(daily_tip)
+        schedule.every().monday.at("05:00", "Europe/Athens").do(weekly_preview)
+        schedule.every().friday.at("17:00", "Europe/Athens").do(weekly_summary)
+        schedule.every().sunday.at("15:00", "Europe/Athens").do(psychology_post)
+    except TypeError:
+        # schedule >= 1.2.0 is required for timezone support; fall back to bare times
+        print("WARNING: schedule>=1.2.0 required for timezone support; jobs will run in server local time")
+        schedule.every().day.at("06:00").do(daily_tip)
+        schedule.every().monday.at("05:00").do(weekly_preview)
+        schedule.every().friday.at("17:00").do(weekly_summary)
+        schedule.every().sunday.at("15:00").do(psychology_post)
 
     print("Updates Bot started!")
     while True:

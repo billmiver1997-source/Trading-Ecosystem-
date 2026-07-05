@@ -65,7 +65,7 @@ def load_trades():
         try:
             with open(TRADES_FILE) as f:
                 return json.load(f)
-        except (json.JSONDecodeError, ValueError) as e:
+        except (json.JSONDecodeError, ValueError, OSError) as e:
             print(f"load_trades JSON error (file may be corrupted): {e}")
     return []
 
@@ -84,7 +84,7 @@ def load_stats():
         try:
             with open(STATS_FILE) as f:
                 return json.load(f)
-        except (json.JSONDecodeError, ValueError) as e:
+        except (json.JSONDecodeError, ValueError, OSError) as e:
             print(f"load_stats JSON error: {e}")
     return {"wins": 0, "losses": 0, "total_pips": 0.0, "by_pair": {}}
 
@@ -207,7 +207,10 @@ def _check_trades_inner():
         if tp_hit:
             closed.append((trade, "WIN", abs(tp - entry), now))
         elif sl_hit:
-            closed.append((trade, "LOSS", abs(sl - entry), now))
+            pips_lost = abs(sl - entry)
+            # Breakeven: SL was moved to entry and hit — not a loss
+            result_label = "BE" if pips_lost < 1e-9 else "LOSS"
+            closed.append((trade, result_label, pips_lost, now))
         else:
             remaining.append(trade)
 
@@ -232,7 +235,6 @@ def _check_trades_inner():
             stats["wins"] += 1
             stats["total_pips"] += pips
             pair_s["wins"] += 1
-            save_stats(stats)
             total = stats["wins"] + stats["losses"]
             winrate = round((stats["wins"] / total) * 100, 1) if total > 0 else 0
             msg = (
@@ -248,11 +250,23 @@ def _check_trades_inner():
             print("TP hit: " + name)
             _append_journal({"pair":name,"side":signal,"result":"WIN","pips":"+"+str(round(pips,4)),"note":"Auto - TP Hit","date":now})
 
+        elif result == "BE":
+            # Breakeven: SL was moved to entry and hit — does not affect win/loss stats
+            msg = (
+                "\U0001f6e1 BREAKEVEN CLOSED\n\n"
+                + emoji + " " + name + " | " + now + "\n\n"
+                "Signal: " + signal + "\n"
+                "Entry: " + str(round(entry, 5)) + "\n"
+                "Result: Breakeven \U0001f7e1"
+            )
+            send_all(msg)
+            print("BE closed: " + name)
+            _append_journal({"pair":name,"side":signal,"result":"BE","pips":"0","note":"Auto - Breakeven","date":now})
+
         else:  # LOSS
             stats["losses"] += 1
             stats["total_pips"] -= pips
             pair_s["losses"] += 1
-            save_stats(stats)
             total = stats["wins"] + stats["losses"]
             winrate = round((stats["wins"] / total) * 100, 1) if total > 0 else 0
             msg = (
@@ -267,6 +281,8 @@ def _check_trades_inner():
             send_all(msg)
             print("SL hit: " + name)
             _append_journal({"pair":name,"side":signal,"result":"LOSS","pips":"-"+str(round(pips,4)),"note":"Auto - SL Hit","date":now})
+
+    save_stats(stats)  # single write after all closed trades are processed
 
 def send_daily_stats():
     stats = load_stats()

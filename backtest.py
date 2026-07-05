@@ -11,6 +11,8 @@ from datetime import datetime
 import pytz
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
+if not TELEGRAM_TOKEN:
+    raise RuntimeError("TELEGRAM_TOKEN_SIGNAL is not set in environment")
 USERS_FILE = "/root/tradingbot/users.json"
 
 PAIRS = {
@@ -33,7 +35,7 @@ def load_users():
         try:
             with open(USERS_FILE) as f:
                 return json.load(f)
-        except (json.JSONDecodeError, ValueError) as e:
+        except (json.JSONDecodeError, ValueError, OSError) as e:
             print(f"load_users error: {e}")
     return []
 
@@ -106,7 +108,7 @@ def backtest_pair(name, symbol):
         if sb >= 4 and trend_4h == "BULL":
             tp = p + a*3; sl2 = p - a*1.5
             resolved = False
-            for j in range(i+1, min(i+60, len(df))):
+            for j in range(i+1, min(i+61, len(df))):
                 # Check SL first: if both SL and TP hit on same candle (gap), count as loss
                 if low.iloc[j] <= sl2: losses+=1; total_pips-=abs(p-sl2); resolved=True; break
                 if high.iloc[j] >= tp: wins+=1; total_pips+=abs(tp-p); resolved=True; break
@@ -116,7 +118,7 @@ def backtest_pair(name, symbol):
         elif se >= 4 and trend_4h == "BEAR":
             tp = p - a*3; sl2 = p + a*1.5
             resolved = False
-            for j in range(i+1, min(i+60, len(df))):
+            for j in range(i+1, min(i+61, len(df))):
                 # Check SL first: if both SL and TP hit on same candle (gap), count as loss
                 if high.iloc[j] >= sl2: losses+=1; total_pips-=abs(sl2-p); resolved=True; break
                 if low.iloc[j] <= tp: wins+=1; total_pips+=abs(p-tp); resolved=True; break

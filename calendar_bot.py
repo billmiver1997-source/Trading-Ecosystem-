@@ -18,8 +18,10 @@ def send_channel(msg):
         r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
             json={"chat_id": CHANNEL_ID, "text": msg[:4000]}, timeout=10)
         r.raise_for_status()
+        return True
     except Exception as e:
         print(f"send_channel error: {e}")
+        return False
 
 
 def get_calendar():
@@ -131,8 +133,8 @@ def main():
                 events = get_calendar()
                 analysis = get_analysis(events)
                 msg = format_message(events, analysis)
-                send_channel(msg)
-                sent_today = today
+                if send_channel(msg):
+                    sent_today = today
                 print("Calendar sent! "+str(len(events))+" events")
                 time.sleep(600)
             else:

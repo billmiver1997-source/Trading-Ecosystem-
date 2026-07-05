@@ -3,24 +3,13 @@ from dotenv import load_dotenv
 load_dotenv("/root/tradingbot/.env")
 
 import requests
-import json
 import time
 import anthropic
 from datetime import datetime
 import pytz
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
-USERS_FILE = "/root/tradingbot/users.json"
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-
-def load_users():
-    if os.path.exists(USERS_FILE):
-        try:
-            with open(USERS_FILE) as f:
-                return json.load(f)
-        except (json.JSONDecodeError, ValueError) as e:
-            print(f"load_users error: {e}")
-    return []
 
 def send_channel(msg):
     CHANNEL_ID = os.getenv("TELEGRAM_NEWS_CHANNEL")
@@ -28,8 +17,10 @@ def send_channel(msg):
         r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
             json={"chat_id": CHANNEL_ID, "text": msg[:4000]}, timeout=10)
         r.raise_for_status()
+        return True
     except Exception as e:
         print(f"send_channel error: {e}")
+        return False
 
 
 def get_fear_greed():
@@ -159,8 +150,8 @@ def main():
                 vix = get_vix()
                 summary = get_ai_summary(fg, dxy, gold, vix)
                 msg = format_message(fg, dxy, gold, vix, summary)
-                send_channel(msg)
-                sent_today = today
+                if send_channel(msg):
+                    sent_today = today
                 print("Sentiment sent!")
 
         except Exception as e:

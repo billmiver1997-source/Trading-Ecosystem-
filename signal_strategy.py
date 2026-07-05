@@ -13,6 +13,8 @@ import pytz
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
 SIGNALS_CHANNEL = os.getenv("SIGNALS_CHANNEL")
+if not TELEGRAM_TOKEN or not SIGNALS_CHANNEL:
+    raise RuntimeError("TELEGRAM_TOKEN_SIGNAL and SIGNALS_CHANNEL must be set in .env")
 LAST_SIGNAL_FILE = "/root/tradingbot/last_signals_smc.json"
 
 ALL_PAIRS = {
@@ -116,6 +118,8 @@ def get_data(symbol):
         df = yf.Ticker(symbol).history(period="30d", interval="1h")
         if len(df) < 50:
             df = yf.Ticker(symbol).history(period="60d", interval="1h")
+        if len(df) < 50:
+            return None
         return df
     except Exception as e:
         print(f"get_data error {symbol}: {e}")
@@ -255,7 +259,8 @@ def find_poi(df, name):
         bear_score += 1
         bear_reasons.append("Strong bearish candle")
 
-    if bull_score >= 5:
+    # When both sides score >= 5 (extremely rare), return the stronger bias
+    if bull_score >= 5 and (bear_score < 5 or bull_score >= bear_score):
         sl = round(price - (atr * 1.5), 5)
         tp = round(price + (atr * 3), 5)
         zone_low = round(price - atr * 0.3, 5)
@@ -466,20 +471,17 @@ def main():
                         print(f"Skipping {name} — news filter active")
                         continue
 
-                    last_sig = last_signals.get(name, {})
-                    last_sig_time = last_sig.get("time", 0)
-                    if (now_time - last_sig_time) < 21600:
-                        continue
-
                     trend_4h = get_trend_4h(symbol)
                     df = get_data(symbol)
                     poi = find_poi(df, name)
 
                     if poi:
                         signal = "BUY" if poi["bias"] == "BULLISH" else "SELL"
-                        # Removed permanent same-direction block: the 6h cooldown above
-                        # already prevents spam; blocking same direction forever prevented
-                        # valid re-entries in strong trends.
+                        # Cooldown is direction-aware: a valid reversal (BUY after SELL or
+                        # vice versa) is not suppressed by a recent signal in the other direction.
+                        last_sig_key = f"{name}_{signal}"
+                        if (now_time - last_signals.get(last_sig_key, {}).get("time", 0)) < 21600:
+                            continue
                         if trend_4h and signal == "BUY" and trend_4h != "BULL":
                             continue
                         if trend_4h and signal == "SELL" and trend_4h != "BEAR":
@@ -506,7 +508,8 @@ def main():
                 msg = format_poi(best_name, best_poi)
                 send_signal(msg)
                 signal = "BUY" if best_poi["bias"] == "BULLISH" else "SELL"
-                last_signals[best_name] = {"time": now_time, "signal": signal}
+                last_sig_key = f"{best_name}_{signal}"
+                last_signals[last_sig_key] = {"time": now_time, "signal": signal}
                 save_last_signals(last_signals)
                 add_trade(best_name, best_poi)
                 print(f"POI sent: {best_name} {best_poi['bias']} score:{best_score}")

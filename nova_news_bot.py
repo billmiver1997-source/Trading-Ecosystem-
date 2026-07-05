@@ -242,15 +242,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text in category_map:
         await update.message.reply_text("\U0001f504 Loading latest news...", reply_markup=MAIN_MENU)
         category = category_map[text]
-        # Run blocking network + AI calls off the event loop
-        headlines = await asyncio.to_thread(get_news, category)
-        summary = await asyncio.to_thread(get_ai_summary, headlines, category)
-        await update.message.reply_text(
-            TITLES[category]+" | "+now+"\n\n"+summary+"\n\n\U0001f4f0 Full coverage: @tradingNovaNews",
-            reply_markup=MAIN_MENU
-        )
+        try:
+            headlines = await asyncio.to_thread(get_news, category)
+            summary = await asyncio.to_thread(get_ai_summary, headlines, category)
+            await update.message.reply_text(
+                TITLES[category]+" | "+now+"\n\n"+summary+"\n\n\U0001f4f0 Full coverage: @tradingNovaNews",
+                reply_markup=MAIN_MENU
+            )
+        except Exception as e:
+            print(f"handle_message news error: {e}")
+            await update.message.reply_text("Error fetching news. Please try again.", reply_markup=MAIN_MENU)
 
-    elif text in ["📅 Calendar"]:
+    elif text == "📅 Calendar":
         await update.message.reply_text("🔄 Loading...", reply_markup=MAIN_MENU)
         try:
             msg = await asyncio.to_thread(_fetch_calendar_today)
@@ -258,7 +261,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             await update.message.reply_text("Error: "+str(e), reply_markup=MAIN_MENU)
 
-    elif text in ["🧠 Sentiment"]:
+    elif text == "🧠 Sentiment":
         await update.message.reply_text("🔄 Loading...", reply_markup=MAIN_MENU)
         try:
             msg = await asyncio.to_thread(_fetch_sentiment)

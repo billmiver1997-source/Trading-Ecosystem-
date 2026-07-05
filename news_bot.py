@@ -69,8 +69,12 @@ def collect_news():
         except Exception as e:
             print(f"collect_news feed error {feed_url}: {e}")
     # high-impact headlines first, then general; deduplicate while preserving order
+    combined = []
     seen = set()
-    combined = [h for h in high_impact + headlines if not (h in seen or seen.add(h))]
+    for h in high_impact + headlines:
+        if h not in seen:
+            seen.add(h)
+            combined.append(h)
     return combined[:40]
 
 def create_report(headlines):
