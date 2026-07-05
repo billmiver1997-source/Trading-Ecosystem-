@@ -10,9 +10,32 @@ import pytz
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+CHANNEL_ID = os.getenv("TELEGRAM_NEWS_CHANNEL")
+IMAGES_DIR = "/root/tradingbot/images"
+_photo_ids = {}
+
+def _send_photo(photo_name):
+    path = os.path.join(IMAGES_DIR, photo_name)
+    if not os.path.exists(path):
+        return
+    try:
+        fid = _photo_ids.get(photo_name)
+        if fid:
+            r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
+                json={"chat_id": CHANNEL_ID, "photo": fid}, timeout=15)
+        else:
+            with open(path, "rb") as pf:
+                r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
+                    files={"photo": ("image.jpg", pf, "image/jpeg")},
+                    data={"chat_id": CHANNEL_ID}, timeout=15)
+            photos = r.json().get("result", {}).get("photo", [])
+            if photos:
+                _photo_ids[photo_name] = photos[-1]["file_id"]
+        r.raise_for_status()
+    except Exception as e:
+        print(f"send_photo error: {e}")
 
 def send_channel(msg):
-    CHANNEL_ID = os.getenv("TELEGRAM_NEWS_CHANNEL")
     try:
         r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
             json={"chat_id": CHANNEL_ID, "text": msg[:4000]}, timeout=10)
@@ -151,6 +174,7 @@ def main():
                 gold = get_gold_sentiment()
                 vix = get_vix()
                 msg = format_message(fg, dxy, gold, vix)
+                _send_photo("sentiment.jpg")
                 if send_channel(msg):
                     sent_today = today
                 print("Sentiment sent!")

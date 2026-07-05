@@ -13,6 +13,29 @@ import pytz
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
 CHANNEL_ID = os.getenv("TELEGRAM_NEWS_CHANNEL")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+IMAGES_DIR = "/root/tradingbot/images"
+_photo_ids = {}
+
+def send_photo_channel(photo_name):
+    path = os.path.join(IMAGES_DIR, photo_name)
+    if not os.path.exists(path):
+        return
+    try:
+        fid = _photo_ids.get(photo_name)
+        if fid:
+            r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
+                json={"chat_id": CHANNEL_ID, "photo": fid}, timeout=15)
+        else:
+            with open(path, "rb") as pf:
+                r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
+                    files={"photo": ("image.jpg", pf, "image/jpeg")},
+                    data={"chat_id": CHANNEL_ID}, timeout=15)
+            photos = r.json().get("result", {}).get("photo", [])
+            if photos:
+                _photo_ids[photo_name] = photos[-1]["file_id"]
+        r.raise_for_status()
+    except Exception as e:
+        print(f"send_photo error: {e}")
 
 FEEDS = [
     "https://feeds.bbci.co.uk/news/world/rss.xml",
@@ -163,6 +186,7 @@ def main():
                     report, top_links = create_report(items)
                     if report:
                         header = random.choice(SCHEDULE[hour])
+                        send_photo_channel("news.jpg")
                         msg = header+"\n🕔 "+now_str+"\n\n"+report
                         if top_links:
                             links_section = "\n\n📎 Read more:\n"
