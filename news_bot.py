@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv("/root/tradingbot/.env")
 
+import html as _html
 import requests
 import time
 import random
@@ -187,12 +188,15 @@ def main():
                     if report:
                         header = random.choice(SCHEDULE[hour])
                         send_photo_channel("news.jpg")
-                        msg = header+"\n🕔 "+now_str+"\n\n"+report
+                        # Escape AI text so stray &/</> chars don't break Telegram's HTML parser
+                        msg = _html.escape(header)+"\n🕔 "+_html.escape(now_str)+"\n\n"+_html.escape(report)
                         if top_links:
                             links_section = "\n\n📎 Read more:\n"
                             for title, url in top_links:
                                 short = title[:60]+"…" if len(title) > 60 else title
-                                links_section += f'• <a href="{url}">{short}</a>\n'
+                                # URLs often contain & in query strings; titles may have < or >
+                                safe_url = url.replace("&", "&amp;")
+                                links_section += f'• <a href="{safe_url}">{_html.escape(short)}</a>\n'
                             msg += links_section.rstrip()
                         send_channel(msg, parse_mode="HTML")
                         print(f"Sent {hour}:00 update!")
