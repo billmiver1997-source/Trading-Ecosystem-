@@ -400,6 +400,8 @@ def get_news_blocked_currencies():
                     continue
                 event_time_str = time_td.text.strip()
                 currency = currency_td.text.strip()
+                if not event_time_str or "Day" in event_time_str or ":" not in event_time_str:
+                    continue
                 event_dt = tz.localize(datetime.strptime(today + " " + event_time_str, "%Y-%m-%d %H:%M"))
                 delta_min = (event_dt - now).total_seconds() / 60
                 if -15 <= delta_min <= 30:
