@@ -309,16 +309,20 @@ def get_status():
     return "\n".join(lines)
 
 def set_commands():
-    requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/setMyCommands", timeout=10, json={
-        "commands": [
-            {"command": "start", "description": "Start & main menu"},
-            {"command": "analysis", "description": "Get analysis: /analysis EURUSD"},
-            {"command": "sentiment", "description": "Market sentiment"},
-            {"command": "status", "description": "Trading status & open trades"},
-            {"command": "links", "description": "Our social links"},
-            {"command": "stats", "description": "Bot statistics (admin only)"},
-        ]
-    })
+    try:
+        r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/setMyCommands", timeout=10, json={
+            "commands": [
+                {"command": "start", "description": "Start & main menu"},
+                {"command": "analysis", "description": "Get analysis: /analysis EURUSD"},
+                {"command": "sentiment", "description": "Market sentiment"},
+                {"command": "status", "description": "Trading status & open trades"},
+                {"command": "links", "description": "Our social links"},
+                {"command": "stats", "description": "Bot statistics (admin only)"},
+            ]
+        })
+        r.raise_for_status()
+    except Exception as e:
+        print(f"set_commands error: {e}")
 
 def handle_message(chat_id, text, username, first_name=""):
     text = text.strip()
@@ -853,10 +857,7 @@ def handle_message(chat_id, text, username, first_name=""):
         send_message(chat_id, "Use the menu below:", main_menu())
 
 def main():
-    try:
-        set_commands()
-    except Exception as e:
-        print(f"set_commands error: {e}")
+    set_commands()
     offset = None
     print("Listener started...")
     while True:
