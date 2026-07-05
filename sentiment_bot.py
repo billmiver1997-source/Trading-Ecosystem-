@@ -85,51 +85,53 @@ def get_vix():
         print(f"get_vix error: {e}")
         return None
 
-def get_ai_summary(fg, dxy, gold, vix):
-    try:
-        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-        data = ""
-        if fg: data += "Crypto Fear & Greed: "+str(fg["value"])+" ("+fg["classification"]+")\n"
-        if dxy: data += "DXY: "+str(dxy["value"])+" | 24h change: "+str(dxy["change"])+"%\n"
-        if gold: data += "Gold: "+str(gold["value"])+" | 24h change: "+str(gold["change"])+"%\n"
-        if vix: data += "VIX: "+str(vix["value"])+" ("+vix["level"]+")\n"
-        message = client.messages.create(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=300,
-            messages=[{"role":"user","content":"Based on this market sentiment data, write 2-3 simple sentences about overall market mood and what forex/crypto traders should expect. Simple English only.\n\n"+data}]
-        )
-        return message.content[0].text
-    except Exception as e:
-        print(f"get_ai_summary error: {e}")
-        return ""
+SENTIMENT_STYLES = [
+    "Write a morning sentiment briefing for forex and crypto traders. Use the data below. Start with the most important signal, then connect the dots between Fear & Greed, DXY, Gold and VIX. What does it all mean together? Write 3-4 sentences, naturally, with emojis. No headers or bullet points.",
+    "You're a senior trader writing your daily sentiment note. Use the data below. Be direct and opinionated — what is the market telling us today? What should traders be cautious about or excited about? 3-4 sentences, emojis, plain text.",
+    "Write a market mood report using the data below. Structure: 1 sentence on risk appetite, 1 on dollar strength, 1 on Gold, 1 overall conclusion. Use emojis. Conversational tone.",
+    "Analyze the market sentiment data below and write a concise briefing. Highlight any contradictions or confirmations between the indicators. What's the dominant theme today? 3-5 sentences, emojis, plain text.",
+    "Using the sentiment data below, write a quick market pulse for traders. Lead with what stands out most, then give context. End with one actionable insight. 3-4 sentences, emojis.",
+]
 
-def format_message(fg, dxy, gold, vix, summary):
+SENTIMENT_HEADERS = [
+    "🧠 MARKET SENTIMENT",
+    "📊 DAILY SENTIMENT REPORT",
+    "🎯 MARKET PULSE",
+    "🧠 SENTIMENT BRIEFING",
+    "📈 MARKET MOOD",
+]
+
+def format_message(fg, dxy, gold, vix):
+    import random
     tz = pytz.timezone("Europe/Athens")
     now = datetime.now(tz).strftime("%d/%m/%Y %H:%M")
-    lines = ["\U0001f9e0 MARKET SENTIMENT\n\U0001f554 " + now + "\n"]
 
+    data = ""
     if fg:
         bar = "█" * (fg["value"] // 10) + "░" * (10 - fg["value"] // 10)
-        lines.append("\U0001f7e1 CRYPTO FEAR & GREED")
-        lines.append(fg["emoji"] + " " + str(fg["value"]) + "/100 - " + fg["classification"])
-        lines.append("[" + bar + "]")
-
+        data += f"Crypto Fear & Greed: {fg['value']}/100 - {fg['classification']} [{bar}]\n"
     if dxy:
-        lines.append("\n\U0001f4b5 US DOLLAR (DXY)")
-        lines.append(dxy["sentiment"] + " | " + str(dxy["value"]) + " (" + str(dxy["change"]) + "% 24h)")
-
+        data += f"DXY (US Dollar): {dxy['value']} | {dxy['change']}% 24h | {dxy['sentiment']}\n"
     if gold:
-        lines.append("\n\U0001fa99 GOLD")
-        lines.append(gold["sentiment"] + " | $" + str(gold["value"]) + " (" + str(gold["change"]) + "% 24h)")
-
+        data += f"Gold: ${gold['value']} | {gold['change']}% 24h | {gold['sentiment']}\n"
     if vix:
-        lines.append("\n\U0001f4ca VIX (Market Fear)")
-        lines.append(vix["level"] + " | " + str(vix["value"]))
+        data += f"VIX (Market Fear): {vix['value']} | {vix['level']}\n"
 
-    if summary:
-        lines.append("\n\U0001f4a1 ANALYST NOTE:\n" + summary)
+    try:
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        style = random.choice(SENTIMENT_STYLES)
+        message = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=350,
+            messages=[{"role":"user","content":style+"\n\nData:\n"+data}]
+        )
+        ai_text = message.content[0].text
+    except Exception as e:
+        print(f"sentiment AI error: {e}")
+        ai_text = data
 
-    return "\n".join(lines)
+    header = random.choice(SENTIMENT_HEADERS)
+    return header+"\n🕔 "+now+"\n\n"+ai_text
 
 def main():
     print("Sentiment bot started...")
@@ -148,8 +150,7 @@ def main():
                 dxy = get_dxy_sentiment()
                 gold = get_gold_sentiment()
                 vix = get_vix()
-                summary = get_ai_summary(fg, dxy, gold, vix)
-                msg = format_message(fg, dxy, gold, vix, summary)
+                msg = format_message(fg, dxy, gold, vix)
                 if send_channel(msg):
                     sent_today = today
                 print("Sentiment sent!")

@@ -4,6 +4,7 @@ load_dotenv("/root/tradingbot/.env")
 
 import requests
 import time
+import random
 import feedparser
 import anthropic
 from datetime import datetime
@@ -41,12 +42,12 @@ HIGH_IMPACT = [
 
 # Schedule: 07:00 night summary, 08:00 morning, 12:00, 16:00, 20:00 updates, 23:00 day summary
 SCHEDULE = {
-    7:  "🌍 WORLD & 📈 MARKETS UPDATE",
-    8:  "🌅 GOOD MORNING BRIEF",
-    12: "🌍 WORLD & 📈 MARKETS UPDATE",
-    16: "🌍 WORLD & 📈 MARKETS UPDATE",
-    20: "🌍 WORLD & 📈 MARKETS UPDATE",
-    23: "🌙 DAY SUMMARY",
+    7:  ["🌍 MARKETS OPEN BRIEF", "📰 EARLY MORNING UPDATE", "🌅 PRE-MARKET SNAPSHOT"],
+    8:  ["🌅 GOOD MORNING BRIEF", "☕ MORNING MARKET WRAP", "📊 START OF DAY BRIEFING"],
+    12: ["📊 MIDDAY UPDATE", "🌍 NOON MARKETS BRIEF", "⚡ MIDDAY SNAPSHOT"],
+    16: ["📈 AFTERNOON UPDATE", "🔔 MARKET MID-SESSION", "🌍 AFTERNOON BRIEF"],
+    20: ["🌆 EVENING WRAP", "📉 END OF SESSION UPDATE", "🌍 EVENING MARKETS BRIEF"],
+    23: ["🌙 DAY SUMMARY", "🌃 LATE NIGHT BRIEF", "📋 CLOSING WRAP"],
 }
 
 def get_greece_time():
@@ -77,16 +78,40 @@ def collect_news():
             combined.append(h)
     return combined[:40]
 
+REPORT_STYLES = [
+    {
+        "system": "You are a sharp forex news editor. Write 5 punchy bullet points for traders. Each under 15 words. Start each with a relevant emoji. No headers.",
+        "user": "What are the 5 most market-moving stories right now? Be direct.\n\nHeadlines:\n{headlines}"
+    },
+    {
+        "system": "You are a senior market analyst briefing a trading desk. Write naturally, 3-4 short paragraphs. Use emojis. Focus on what matters for EUR, USD, Gold, Oil positions.",
+        "user": "Brief the desk on today's key developments and their trading implications.\n\nHeadlines:\n{headlines}"
+    },
+    {
+        "system": "You are a concise financial journalist. Pick the 3 most important stories, explain each in 2 sentences: what happened + why it matters for forex/crypto traders. Use emojis.",
+        "user": "What should traders know right now?\n\nHeadlines:\n{headlines}"
+    },
+    {
+        "system": "You are a forex trader sharing key news with your community. Write conversationally, 4-6 lines. Use emojis. Highlight risk events and opportunities.",
+        "user": "Share the most relevant news for traders right now in a natural, engaging way.\n\nHeadlines:\n{headlines}"
+    },
+    {
+        "system": "You are a market intelligence analyst. Group the news into themes (geopolitical / macro / commodities) and give 1-2 sentences per theme. Use emojis. Plain text only.",
+        "user": "Analyze today's headlines by theme and explain the trading impact.\n\nHeadlines:\n{headlines}"
+    },
+]
+
 def create_report(headlines):
     if not headlines:
         return None
     try:
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        style = random.choice(REPORT_STYLES)
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=250,
-            system="You are a concise forex news editor. Respond with MAXIMUM 5 short bullet points. Each bullet MUST be under 15 words. Start each bullet with a relevant emoji. NO headers, NO sections, NO long paragraphs.",
-            messages=[{"role":"user","content":"Summarize the most important market-moving news for forex traders right now in 5 bullet points.\n\nHeadlines:\n"+"\n".join(headlines[:8])}]
+            max_tokens=380,
+            system=style["system"],
+            messages=[{"role":"user","content":style["user"].format(headlines="\n".join(headlines[:10]))}]
         )
         return message.content[0].text
     except Exception as e:
@@ -133,7 +158,7 @@ def main():
                 if headlines:
                     report = create_report(headlines)
                     if report:
-                        header = SCHEDULE[hour]
+                        header = random.choice(SCHEDULE[hour])
                         send_channel(header+"\n🕔 "+now_str+"\n\n"+report)
                         print(f"Sent {hour}:00 update!")
                 sent_today[send_key] = True  # mark attempted regardless to prevent duplicate sends

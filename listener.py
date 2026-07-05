@@ -231,28 +231,25 @@ def get_analysis(pair_name):
         macd_sig = macd_line.ewm(span=9).mean().iloc[-1]
         atr_pct = round((atr / price) * 100, 3)
 
+        import random
         client = _get_anthropic()
-        system_prompt = (
-            "You are a professional forex and commodities analyst. "
-            "Respond in plain text only — no markdown, no asterisks, no headers. "
-            "Always give a specific numeric ENTRY, SL, and TP. "
-            "Calculate SL using ATR*1.5 distance from entry; TP using ATR*3 (1:2 risk-reward). "
-            "Keep the full response under 150 words."
-        )
-        prompt = (
-            "Analyze "+pair_name+" on the 15-minute chart.\n\n"
-            "Price: "+str(round(price,5))+" | EMA20: "+str(round(ema20,5))+" | EMA50: "+str(round(ema50,5))+"\n"
+        system_prompt = "You are a professional forex and commodities analyst. Respond in plain text only — no markdown, no asterisks. Always include a specific numeric ENTRY, SL, and TP. Use emojis sparingly."
+        analysis_styles = [
+            "You are a professional forex analyst. Give a complete analysis of {pair} on the 15-minute timeframe. Cover: market bias, key levels, momentum, and a clear trade idea (BUY/SELL/WAIT) with entry, SL, and TP. Be direct and specific.",
+            "You are a senior trader reviewing {pair} live. Start with what the chart is telling you right now. Then: is there a trade here? If yes — entry, SL, TP and why. If no — what to wait for. Write like you're talking to a fellow trader.",
+            "You are a trading desk analyst. For {pair}: what is the dominant trend, what are the key levels price is reacting to, and what is your trade recommendation? Give exact levels. Include a risk note at the end. Confident, concise.",
+            "You are an experienced forex trader. Analyze {pair} and give your honest read: trend, momentum, key zone to watch. Then one clear recommendation: BUY / SELL / WAIT — with levels and reasoning. Don't hedge. Be direct.",
+        ]
+        style = random.choice(analysis_styles).format(pair=pair_name)
+        data_context = (
+            "\n\nLive data (15m timeframe, 5-day window):\n"
+            "Price: "+str(round(price,5))+"\n"
+            "EMA20: "+str(round(ema20,5))+" | EMA50: "+str(round(ema50,5))+"\n"
             "RSI: "+str(round(rsi,1))+" | MACD: "+str(round(macd,5))+" | Signal: "+str(round(macd_sig,5))+"\n"
             "ATR: "+str(round(atr,5))+" ("+str(atr_pct)+"% of price)\n"
-            "BB Upper: "+str(round(bb_upper,5))+" | BB Lower: "+str(round(bb_lower,5))+"\n\n"
-            "Respond in this exact format:\n"
-            "TREND: [Bullish/Bearish/Neutral]\n"
-            "SIGNAL: [BUY/SELL/WAIT]\n"
-            "ENTRY: [price]\n"
-            "SL: [price]\n"
-            "TP: [price]\n"
-            "RISK NOTE: [one sentence about key risk or context]"
+            "Bollinger Bands: "+str(round(bb_lower,5))+" / "+str(round(bb_upper,5))
         )
+        prompt = style + data_context
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=400,

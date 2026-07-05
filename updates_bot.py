@@ -38,42 +38,72 @@ def ai(prompt):
 def daily_tip():
     import random
     topics = [
-        "Write a trading tip about risk management and position sizing. Max 3 sentences. No markdown. Use emojis.",
-        "Write a trading tip about reading market structure and trends. Max 3 sentences. No markdown. Use emojis.",
-        "Write a trading tip about entry timing and patience. Max 3 sentences. No markdown. Use emojis.",
-        "Write a trading tip about stop loss placement and trade management. Max 3 sentences. No markdown. Use emojis.",
-        "Write a trading tip about trading psychology and emotional control. Max 3 sentences. No markdown. Use emojis.",
-        "Write a trading tip about technical analysis and key indicators. Max 3 sentences. No markdown. Use emojis.",
-        "Write a trading tip about avoiding common beginner mistakes in forex. Max 3 sentences. No markdown. Use emojis.",
-        "Write a trading tip about trading during high impact news events. Max 3 sentences. No markdown. Use emojis.",
-        "Write a trading tip about multi-timeframe analysis. Max 3 sentences. No markdown. Use emojis.",
-        "Write a trading tip about the importance of a trading journal. Max 3 sentences. No markdown. Use emojis.",
-        "Write a trading tip about Smart Money Concepts and institutional levels. Max 3 sentences. No markdown. Use emojis.",
-        "Write a trading tip about crypto trading vs forex trading differences. Max 3 sentences. No markdown. Use emojis.",
-        "Write a trading tip about leverage and margin management. Max 3 sentences. No markdown. Use emojis.",
-        "Write a trading tip about support and resistance levels. Max 3 sentences. No markdown. Use emojis.",
+        ("risk management and position sizing", "the #1 rule most traders ignore about protecting their capital"),
+        ("reading market structure and trends", "how to identify where the market is really going before it gets there"),
+        ("entry timing and patience", "why waiting for the right moment makes or breaks a trade"),
+        ("stop loss placement and trade management", "where to place your stop so the market can't stop you out prematurely"),
+        ("trading psychology and emotional control", "the mental side of trading that nobody talks about enough"),
+        ("technical analysis and key indicators", "how to use indicators as tools, not signals"),
+        ("avoiding common beginner mistakes in forex", "what separates traders who blow accounts from those who don't"),
+        ("trading during high impact news events", "how to protect your account when the market is unpredictable"),
+        ("multi-timeframe analysis", "why looking at just one timeframe is like driving with one eye closed"),
+        ("the importance of a trading journal", "why the best traders track everything and what they look for"),
+        ("Smart Money Concepts and institutional levels", "how to trade with institutions instead of against them"),
+        ("leverage and margin management", "how leverage is a tool that cuts both ways"),
+        ("support and resistance levels", "why price respects certain levels over and over again"),
+        ("the difference between reactive and proactive trading", "how to plan trades before the market moves, not after"),
     ]
-    prompt = random.choice(topics)
+    formats = [
+        "Write a sharp, practical trading tip about {topic}. Context: {context}. 2-3 sentences, direct and confident. Use emojis. Plain text.",
+        "Share a trading insight about {topic}. Context: {context}. Write like you're talking to a fellow trader, not a student. 3 sentences max. Emojis.",
+        "Give one key lesson about {topic}. Context: {context}. Be specific — no generic advice. 2-3 punchy sentences. Use emojis.",
+        "Write a trading truth about {topic}. Context: {context}. Challenge conventional thinking if needed. 3 sentences. Emojis. Plain text.",
+    ]
+    headers = ["💡 DAILY TIP", "📌 TRADER'S NOTE", "⚡ QUICK INSIGHT", "🎯 TODAY'S LESSON", "💬 TRADING WISDOM"]
+    topic, context = random.choice(topics)
+    prompt = random.choice(formats).format(topic=topic, context=context)
     text = ai(prompt)
     if text:
-        send("\U0001f4a1 DAILY TIP\n\n"+text+"\n\n\U0001f4ca @novasignalschannel1\n\n⚠️ Educational purposes only. Not financial advice.")
+        send(random.choice(headers)+"\n\n"+text+"\n\n📊 @novasignalschannel1\n\n⚠️ Educational purposes only. Not financial advice.")
 
 def psychology_post():
-    text = ai("Write a trading psychology post for forex/crypto traders. Include a quote from a famous trader. Then 2-3 sentences about discipline, FOMO, or patience. Max 5 sentences. No markdown. Use emojis.")
+    import random
+    prompts = [
+        "Write a trading psychology post for forex/crypto traders. Include a quote from a famous trader or investor (real quote). Then give 2-3 sentences of your own take on discipline, FOMO, or patience. Write naturally, like a mentor talking to a student. Use emojis. Plain text.",
+        "Write about a common psychological trap traders fall into — revenge trading, overtrading, or fear of missing out. Be honest and direct. Include a real trading quote. 3-5 sentences. Emojis. Plain text.",
+        "Write a motivational but realistic post for traders about consistency over perfection. Include a quote from a famous trader. Don't be generic — give one specific, actionable mindset shift. 3-4 sentences. Emojis.",
+        "Write about the relationship between emotions and trading decisions. Quote a famous trader or market wizard. Then give practical advice on how to stay neutral. 4-5 sentences. Emojis. Plain text.",
+    ]
+    headers = ["🧠 TRADING PSYCHOLOGY", "💭 MINDSET MATTERS", "🎯 TRADER MINDSET", "🧘 MENTAL EDGE"]
+    text = ai(random.choice(prompts))
     if text:
-        send("\U0001f9e0 TRADING PSYCHOLOGY\n\n"+text+"\n\n\U0001f4ca @novasignalschannel1")
+        send(random.choice(headers)+"\n\n"+text+"\n\n📊 @novasignalschannel1")
 
 def weekly_preview():
+    import random
     tz = pytz.timezone("Europe/Athens")
     week = datetime.now(tz).strftime("%d/%m/%Y")
-    text = ai("Write a brief forex/crypto market weekly preview. Key events to watch this week. 4-5 sentences. No markdown. Use emojis.")
+    prompts = [
+        "Write a weekly market preview for forex and crypto traders. What are the key events, data releases, and themes to watch this week? Be specific about which pairs or markets could move. 4-5 sentences. Use emojis. Plain text.",
+        "Write a 'week ahead' briefing for traders. Focus on: what drove markets last week, what's coming this week (central banks, data, geopolitics), and which markets to watch closely. 4-6 sentences. Emojis. Conversational tone.",
+        "Write a Monday market outlook for active traders. Highlight 2-3 key themes or events for the week. Which currencies, commodities or crypto could see big moves? Be direct. 4-5 sentences. Emojis.",
+    ]
+    headers = ["📅 WEEK AHEAD", "🗓 WEEKLY PREVIEW", "📊 THIS WEEK IN MARKETS", "🔭 WEEK AHEAD OUTLOOK"]
+    text = ai(random.choice(prompts))
     if text:
-        send("\U0001f4c5 WEEK AHEAD | "+week+"\n\n"+text+"\n\n\U0001f4ca @novasignalschannel1")
+        send(random.choice(headers)+" | "+week+"\n\n"+text+"\n\n📊 @novasignalschannel1")
 
 def weekly_summary():
-    text = ai("Write a brief end-of-week trading summary. Market themes this week. End with motivation for next week. Max 5 sentences. No markdown. Use emojis.")
+    import random
+    prompts = [
+        "Write an end-of-week trading summary. What were the main market themes this week? What moved and why? End with a forward-looking sentence for next week. 4-5 sentences. Emojis. Plain text.",
+        "Write a Friday wrap-up for forex and crypto traders. Cover the week's biggest moves, what surprised markets, and what traders should carry into next week. Keep it honest and specific. 4-5 sentences. Emojis.",
+        "Write a weekly performance debrief for traders. Highlight 2-3 major market developments from this week, the lessons they teach, and a motivational close. 5 sentences max. Emojis. Plain text.",
+    ]
+    headers = ["📈 WEEKLY WRAP-UP", "📋 WEEK IN REVIEW", "🏁 FRIDAY WRAP", "📊 THIS WEEK SUMMARY"]
+    text = ai(random.choice(prompts))
     if text:
-        send("\U0001f4c8 WEEKLY WRAP-UP\n\n"+text+"\n\n\U0001f4ca @novasignalschannel1")
+        send(random.choice(headers)+"\n\n"+text+"\n\n📊 @novasignalschannel1")
 
 def main():
     try:
