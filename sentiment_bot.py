@@ -19,7 +19,7 @@ def send_channel(msg):
     cap = msg[:1024]
     try:
         fid = _photo_ids.get("sentiment.jpg")
-        if fid and os.path.exists(path):
+        if fid:
             r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
                 json={"chat_id": CHANNEL_ID, "photo": fid, "caption": cap}, timeout=15)
         elif os.path.exists(path):
@@ -63,7 +63,7 @@ def get_dxy_sentiment():
         df = yf.Ticker("DX-Y.NYB").history(period="5d", interval="1h")
         if len(df) < 25:
             return None
-        change = ((df["Close"].iloc[-1] - df["Close"].iloc[-24]) / df["Close"].iloc[-24]) * 100
+        change = ((df["Close"].iloc[-1] - df["Close"].iloc[-25]) / df["Close"].iloc[-25]) * 100
         if change > 0.3: sentiment = "Bullish \U0001f7e2"
         elif change < -0.3: sentiment = "Bearish \U0001f534"
         else: sentiment = "Neutral \U0001f7e1"
@@ -78,7 +78,7 @@ def get_gold_sentiment():
         df = yf.Ticker("GC=F").history(period="5d", interval="1h")
         if len(df) < 25:
             return None
-        change = ((df["Close"].iloc[-1] - df["Close"].iloc[-24]) / df["Close"].iloc[-24]) * 100
+        change = ((df["Close"].iloc[-1] - df["Close"].iloc[-25]) / df["Close"].iloc[-25]) * 100
         if change > 0.5: sentiment = "Bullish \U0001f7e2"
         elif change < -0.5: sentiment = "Bearish \U0001f534"
         else: sentiment = "Neutral \U0001f7e1"

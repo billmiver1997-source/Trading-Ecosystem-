@@ -22,7 +22,7 @@ def send_photo_channel(photo_name, caption="", parse_mode=None):
     cap = caption[:1024]
     try:
         fid = _photo_ids.get(photo_name)
-        if fid and os.path.exists(path):
+        if fid:
             payload = {"chat_id": CHANNEL_ID, "photo": fid, "caption": cap, "disable_web_page_preview": True}
             if parse_mode:
                 payload["parse_mode"] = parse_mode
@@ -197,8 +197,8 @@ def main():
                     report, top_links = create_report(items)
                     if report:
                         header = random.choice(SCHEDULE[hour])
-                        base = _html.escape(header)+"\n🕔 "+_html.escape(now_str)+"\n\n"+_html.escape(report)
                         if top_links:
+                            base = _html.escape(header)+"\n🕔 "+_html.escape(now_str)+"\n\n"+_html.escape(report)
                             links_section = "\n\n📎 Read more:\n"
                             for title, url in top_links:
                                 short = title[:55]+"…" if len(title) > 55 else title
@@ -209,7 +209,7 @@ def main():
                             msg = base[:max_base] + links_str
                             parse_mode = "HTML"
                         else:
-                            msg = base
+                            msg = header+"\n🕔 "+now_str+"\n\n"+report
                             parse_mode = None
                         send_photo_channel("news.jpg", caption=msg, parse_mode=parse_mode)
                         print(f"Sent {hour}:00 update!")

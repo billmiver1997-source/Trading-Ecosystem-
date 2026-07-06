@@ -11,6 +11,8 @@ from datetime import datetime
 import pytz
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
+if not TELEGRAM_TOKEN:
+    raise RuntimeError("TELEGRAM_TOKEN_SIGNAL is not set in environment")
 USERS_FILE = "/root/tradingbot/users.json"
 TRADES_FILE = "/root/tradingbot/open_trades.json"
 STATS_FILE = "/root/tradingbot/trade_stats.json"
@@ -37,7 +39,7 @@ PAIR_EMOJIS = {
     "USD/CHF": "\U0001f1fa\U0001f1f8",
     "AUD/USD": "\U0001f1e6\U0001f1fa",
     "EUR/USD": "\U0001f1ea\U0001f1fa",
-    "EUR/CHF": "\U0001f1ea\U0001f1fa",
+    "EUR/CHF": "\U0001f1e8\U0001f1ed",
     "GBP/USD": "\U0001f1ec\U0001f1e7",
     "USD/CAD": "\U0001f1e8\U0001f1e6",
     "NZD/USD": "\U0001f1f3\U0001f1ff",

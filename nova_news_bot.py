@@ -170,42 +170,20 @@ TITLES = {
 
 def _fetch_calendar_today():
     """Sync helper: fetch today's (or tomorrow's) economic calendar for asyncio.to_thread."""
-    from bs4 import BeautifulSoup
-    from datetime import timedelta
-    tz2 = pytz.timezone("Europe/Athens")
-    today = datetime.now(tz2).strftime("%Y-%m-%d")
-    now_str = datetime.now(tz2).strftime("%d/%m/%Y")
-    h = {"User-Agent":"Mozilla/5.0","X-Requested-With":"XMLHttpRequest","Referer":"https://www.investing.com/economic-calendar/"}
-    d = {"dateFrom":today,"dateTo":today,"importance[]":["2","3"]}
-    r = requests.post("https://www.investing.com/economic-calendar/Service/getCalendarFilteredData",headers=h,data=d,timeout=15)
-    r.raise_for_status()
-    soup = BeautifulSoup(r.json().get("data",""),"html.parser")
-    rows = soup.find_all("tr",id=lambda x: x and x.startswith("eventRowId_"))
-    events = []
-    for row in rows[:8]:
-        try:
-            tds = row.find_all("td")
-            if len(tds) < 3: continue
-            ev_time = tds[0].text.strip()
-            currency = tds[1].text.strip()
-            ev_name = tds[3].text.strip() if len(tds)>3 else ""
-            if currency in ["USD","EUR","GBP","JPY","CHF","AUD","CAD","NZD"]:
-                events.append("📍 "+ev_time+" | "+currency+" | "+ev_name)
-        except Exception as e:
-            print(f"Calendar row parse error (today): {e}")
-            continue
-    msg = "📅 FOREX CALENDAR | "+now_str+chr(10)+chr(10)
-    if events:
-        msg += chr(10).join(events)
-    else:
-        tomorrow = (datetime.now(tz2) + timedelta(days=1)).strftime("%Y-%m-%d")
-        d2 = {"dateFrom":tomorrow,"dateTo":tomorrow,"importance[]":["2","3"]}
-        r2 = requests.post("https://www.investing.com/economic-calendar/Service/getCalendarFilteredData",headers=h,data=d2,timeout=15)
-        r2.raise_for_status()
-        soup2 = BeautifulSoup(r2.json().get("data",""),"html.parser")
-        rows2 = soup2.find_all("tr",id=lambda x: x and x.startswith("eventRowId_"))
-        tomorrow_events = []
-        for row in rows2[:8]:
+    try:
+        from bs4 import BeautifulSoup
+        from datetime import timedelta
+        tz2 = pytz.timezone("Europe/Athens")
+        today = datetime.now(tz2).strftime("%Y-%m-%d")
+        now_str = datetime.now(tz2).strftime("%d/%m/%Y")
+        h = {"User-Agent":"Mozilla/5.0","X-Requested-With":"XMLHttpRequest","Referer":"https://www.investing.com/economic-calendar/"}
+        d = {"dateFrom":today,"dateTo":today,"importance[]":["2","3"]}
+        r = requests.post("https://www.investing.com/economic-calendar/Service/getCalendarFilteredData",headers=h,data=d,timeout=15)
+        r.raise_for_status()
+        soup = BeautifulSoup(r.json().get("data",""),"html.parser")
+        rows = soup.find_all("tr",id=lambda x: x and x.startswith("eventRowId_"))
+        events = []
+        for row in rows[:8]:
             try:
                 tds = row.find_all("td")
                 if len(tds) < 3: continue
@@ -213,31 +191,61 @@ def _fetch_calendar_today():
                 currency = tds[1].text.strip()
                 ev_name = tds[3].text.strip() if len(tds)>3 else ""
                 if currency in ["USD","EUR","GBP","JPY","CHF","AUD","CAD","NZD"]:
-                    tomorrow_events.append("📍 "+ev_time+" | "+currency+" | "+ev_name)
+                    events.append("📍 "+ev_time+" | "+currency+" | "+ev_name)
             except Exception as e:
-                print(f"Calendar row parse error (tomorrow): {e}")
+                print(f"Calendar row parse error (today): {e}")
                 continue
-        if tomorrow_events:
-            msg += "📌 No major events today."+chr(10)+chr(10)+"📆 TOMORROW:"+chr(10)+chr(10)+chr(10).join(tomorrow_events)
+        msg = "📅 FOREX CALENDAR | "+now_str+chr(10)+chr(10)
+        if events:
+            msg += chr(10).join(events)
         else:
-            msg += "No major forex events today or tomorrow."
-    msg += chr(10)+chr(10)+"📊 Full calendar sent at 07:00!"
-    return msg
+            tomorrow = (datetime.now(tz2) + timedelta(days=1)).strftime("%Y-%m-%d")
+            d2 = {"dateFrom":tomorrow,"dateTo":tomorrow,"importance[]":["2","3"]}
+            r2 = requests.post("https://www.investing.com/economic-calendar/Service/getCalendarFilteredData",headers=h,data=d2,timeout=15)
+            r2.raise_for_status()
+            soup2 = BeautifulSoup(r2.json().get("data",""),"html.parser")
+            rows2 = soup2.find_all("tr",id=lambda x: x and x.startswith("eventRowId_"))
+            tomorrow_events = []
+            for row in rows2[:8]:
+                try:
+                    tds = row.find_all("td")
+                    if len(tds) < 3: continue
+                    ev_time = tds[0].text.strip()
+                    currency = tds[1].text.strip()
+                    ev_name = tds[3].text.strip() if len(tds)>3 else ""
+                    if currency in ["USD","EUR","GBP","JPY","CHF","AUD","CAD","NZD"]:
+                        tomorrow_events.append("📍 "+ev_time+" | "+currency+" | "+ev_name)
+                except Exception as e:
+                    print(f"Calendar row parse error (tomorrow): {e}")
+                    continue
+            if tomorrow_events:
+                msg += "📌 No major events today."+chr(10)+chr(10)+"📆 TOMORROW:"+chr(10)+chr(10)+chr(10).join(tomorrow_events)
+            else:
+                msg += "No major forex events today or tomorrow."
+        msg += chr(10)+chr(10)+"📊 Full calendar sent at 07:00!"
+        return msg
+    except Exception as e:
+        print(f"_fetch_calendar_today error: {e}")
+        return "📅 Economic calendar temporarily unavailable. Please try again later."
 
 
 def _fetch_sentiment():
     """Sync helper: fetch Fear & Greed index for asyncio.to_thread."""
-    r = requests.get("https://api.alternative.me/fng/?limit=1", timeout=10)
-    r.raise_for_status()
-    data = r.json()["data"][0]
-    value = int(data["value"])
-    classification = data["value_classification"]
-    if value >= 75: emoji = "🟢"
-    elif value >= 55: emoji = "🟡"
-    elif value >= 45: emoji = "🟠"
-    else: emoji = "🔴"
-    bar = "█"*(value//10)+"░"*(10-value//10)
-    return "🧠 MARKET SENTIMENT"+chr(10)+chr(10)+"Fear & Greed: "+emoji+" "+str(value)+"/100"+chr(10)+"["+bar+"]"+chr(10)+classification
+    try:
+        r = requests.get("https://api.alternative.me/fng/?limit=1", timeout=10)
+        r.raise_for_status()
+        data = r.json()["data"][0]
+        value = int(data["value"])
+        classification = data["value_classification"]
+        if value >= 75: emoji = "🟢"
+        elif value >= 55: emoji = "🟡"
+        elif value >= 45: emoji = "🟠"
+        else: emoji = "🔴"
+        bar = "█"*(value//10)+"░"*(10-value//10)
+        return "🧠 MARKET SENTIMENT"+chr(10)+chr(10)+"Fear & Greed: "+emoji+" "+str(value)+"/100"+chr(10)+"["+bar+"]"+chr(10)+classification
+    except Exception as e:
+        print(f"_fetch_sentiment error: {e}")
+        return "🧠 Sentiment data temporarily unavailable. Please try again later."
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):

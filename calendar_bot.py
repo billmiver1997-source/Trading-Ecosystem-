@@ -11,9 +11,9 @@ import pytz
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+CHANNEL_ID = os.getenv("TELEGRAM_NEWS_CHANNEL")
 
 def send_channel(msg):
-    CHANNEL_ID = os.getenv("TELEGRAM_NEWS_CHANNEL")
     try:
         r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
             json={"chat_id": CHANNEL_ID, "text": msg[:4000]}, timeout=10)
@@ -92,7 +92,8 @@ def get_analysis(events):
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=500,
-            messages=[{"role":"user","content":"You are a forex analyst. Look at these economic events for today and write 3-4 simple sentences about what traders should watch. Which pairs will move most? Simple English only.\n\nEvents:\n"+events_text}]
+            system="You are a forex analyst. Write in simple English only. No markdown.",
+            messages=[{"role":"user","content":"Look at these economic events for today and write 3-4 simple sentences about what traders should watch. Which pairs will move most?\n\nEvents:\n"+events_text}]
         )
         return message.content[0].text
     except Exception as e:

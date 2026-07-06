@@ -66,7 +66,11 @@ def get_trend_4h(symbol):
     return None
 
 def backtest_pair(name, symbol):
-    df = yf.Ticker(symbol).history(period="60d", interval="1h")
+    try:
+        df = yf.Ticker(symbol).history(period="60d", interval="1h")
+    except Exception as e:
+        print(f"backtest_pair data error {name}: {e}")
+        return None
     # Need at least 261 rows so range(200, len(df)-60) has at least one iteration
     if len(df) < 261:
         return None
@@ -137,8 +141,11 @@ def backtest_pair(name, symbol):
             sl2 = p - a*1.5; tp = p + a*3
             resolved = False
             for j in range(i+1, min(i+61, len(df))):
-                if low.iloc[j] <= sl2: losses+=1; total_pips-=abs(p-sl2); resolved=True; break
-                if high.iloc[j] >= tp: wins+=1; total_pips+=abs(tp-p); resolved=True; break
+                sl_hit = low.iloc[j] <= sl2
+                tp_hit = high.iloc[j] >= tp
+                if sl_hit and tp_hit: timeouts+=1; resolved=True; break
+                if sl_hit: losses+=1; total_pips-=abs(p-sl2); resolved=True; break
+                if tp_hit: wins+=1; total_pips+=abs(tp-p); resolved=True; break
             if not resolved:
                 timeouts += 1
 
@@ -146,8 +153,11 @@ def backtest_pair(name, symbol):
             sl2 = p + a*1.5; tp = p - a*3
             resolved = False
             for j in range(i+1, min(i+61, len(df))):
-                if high.iloc[j] >= sl2: losses+=1; total_pips-=abs(sl2-p); resolved=True; break
-                if low.iloc[j] <= tp: wins+=1; total_pips+=abs(p-tp); resolved=True; break
+                sl_hit = high.iloc[j] >= sl2
+                tp_hit = low.iloc[j] <= tp
+                if sl_hit and tp_hit: timeouts+=1; resolved=True; break
+                if sl_hit: losses+=1; total_pips-=abs(sl2-p); resolved=True; break
+                if tp_hit: wins+=1; total_pips+=abs(p-tp); resolved=True; break
             if not resolved:
                 timeouts += 1
 

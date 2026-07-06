@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 load_dotenv("/root/tradingbot/.env")
 
 import asyncio
+import fcntl
 import logging
 import json
 import anthropic
@@ -34,9 +35,8 @@ def load_profiles():
     return {}
 
 def save_profile(user_id, username, first_name):
-    import fcntl
     lock_path = PROFILES_FILE + '.lock'
-    with open(lock_path, 'w') as _lf:
+    with open(lock_path, 'a') as _lf:
         fcntl.flock(_lf, fcntl.LOCK_EX)
         try:
             profiles = load_profiles()
@@ -147,7 +147,7 @@ def get_market_overview():
             price = df["Close"].iloc[-1]
             cutoff = df.index[-1] - pd.Timedelta(hours=24)
             prev = df["Close"][df.index <= cutoff]
-            prev_price = prev.iloc[-1] if len(prev) > 0 else df["Close"].iloc[-24]
+            prev_price = prev.iloc[-1] if len(prev) > 0 else df["Close"].iloc[-25]
             change = ((price - prev_price) / prev_price) * 100
             emoji = "\U0001f7e2" if change > 0 else "\U0001f534"
             result.append(emoji+" "+name+": "+str(round(price,4))+" ("+("{:+.2f}".format(change))+"%)")
@@ -292,7 +292,7 @@ def get_education(topic):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     name = user.first_name or ""
-    save_profile(user.id, user.username or "", name)
+    await asyncio.to_thread(save_profile, user.id, user.username or "", name)
     await update.message.reply_text(get_welcome(name), reply_markup=main_menu())
     try:
         username = "@"+user.username if user.username else "no username"
@@ -302,6 +302,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.error("Owner notify error: %s", e)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.text:
+        return
     text = update.message.text
 
     if text == "\U0001f519 Back":

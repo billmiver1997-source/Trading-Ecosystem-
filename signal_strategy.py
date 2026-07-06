@@ -163,6 +163,8 @@ def find_poi(df, name):
     # ATR
     tr = pd.concat([high-low, (high-close.shift()).abs(), (low-close.shift()).abs()], axis=1).max(axis=1)
     atr = tr.rolling(14).mean().iloc[-1]
+    if pd.isna(atr) or atr == 0:
+        return None
     atr_pct = atr / price
     is_crypto = name in CRYPTO_PAIRS
     min_atr = 0.003 if is_crypto else 0.0003
@@ -322,10 +324,11 @@ def find_poi(df, name):
     # Threshold: 4/9. When both sides qualify, return the stronger one.
     if bull_score >= 4 and (bear_score < 4 or bull_score >= bear_score):
         # Smart SL: use OB/FVG bottom if it gives a tighter zone; else ATR-based
+        # Guard ob/fvg[0] < price so the override never places SL above entry
         sl = round(price - atr * 1.5, 5)
-        if ob_bull_zone and ob_bull_zone[0] > price - atr * 2:
+        if ob_bull_zone and ob_bull_zone[0] > price - atr * 2 and ob_bull_zone[0] < price:
             sl = round(ob_bull_zone[0] - atr * 0.3, 5)
-        elif fvg_bull_zone and fvg_bull_zone[0] > price - atr * 2:
+        elif fvg_bull_zone and fvg_bull_zone[0] > price - atr * 2 and fvg_bull_zone[0] < price:
             sl = round(fvg_bull_zone[0] - atr * 0.3, 5)
         tp = round(price + abs(price - sl) * 2, 5)
         zone_low = round(price - atr * 0.3, 5)
@@ -345,10 +348,11 @@ def find_poi(df, name):
 
     if bear_score >= 4:
         # Smart SL: use OB/FVG top if it gives a tighter zone
+        # Guard ob/fvg[1] > price so the override never places SL below entry
         sl = round(price + atr * 1.5, 5)
-        if ob_bear_zone and ob_bear_zone[1] < price + atr * 2:
+        if ob_bear_zone and ob_bear_zone[1] < price + atr * 2 and ob_bear_zone[1] > price:
             sl = round(ob_bear_zone[1] + atr * 0.3, 5)
-        elif fvg_bear_zone and fvg_bear_zone[1] < price + atr * 2:
+        elif fvg_bear_zone and fvg_bear_zone[1] < price + atr * 2 and fvg_bear_zone[1] > price:
             sl = round(fvg_bear_zone[1] + atr * 0.3, 5)
         tp = round(price - abs(sl - price) * 2, 5)
         zone_low = round(price - atr * 0.3, 5)
@@ -556,11 +560,11 @@ def main():
                         print(f"Skipping {name} — news filter active")
                         continue
 
-                    trend_4h = get_trend_4h(symbol)
                     df = get_data(symbol)
                     poi = find_poi(df, name)
 
                     if poi:
+                        trend_4h = get_trend_4h(symbol)
                         signal = "BUY" if poi["bias"] == "BULLISH" else "SELL"
                         # Cooldown is direction-aware: a valid reversal (BUY after SELL or
                         # vice versa) is not suppressed by a recent signal in the other direction.

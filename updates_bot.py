@@ -139,7 +139,10 @@ def main():
 
     print("Updates Bot started!")
     while True:
-        schedule.run_pending()
+        try:
+            schedule.run_pending()
+        except Exception as e:
+            print("schedule error: "+str(e))
         time.sleep(60)
 
 if __name__ == "__main__":
