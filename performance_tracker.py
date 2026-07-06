@@ -210,7 +210,8 @@ def _check_trades_inner():
         if atr and not tp_hit and not sl_hit:
             half_move = abs(tp - entry) * 0.5
             sig_msg_id = trade.get("signal_message_id")
-            if signal == "BUY" and price >= entry + half_move and sl < entry:
+            # Use 1e-6 epsilon: round(entry,5) < entry by float precision, causing infinite loop
+            if signal == "BUY" and price >= entry + half_move and sl < entry - 1e-6:
                 trade["sl"] = round(entry, 5)
                 print(f"Breakeven set for {name} BUY @ {entry}")
                 be_msg = (
@@ -219,8 +220,7 @@ def _check_trades_inner():
                     f"Current price: {round(price,5)}"
                 )
                 send_channel_reply(be_msg, sig_msg_id)
-                send_all(be_msg)
-            elif signal == "SELL" and price <= entry - half_move and sl > entry:
+            elif signal == "SELL" and price <= entry - half_move and sl > entry + 1e-6:
                 trade["sl"] = round(entry, 5)
                 print(f"Breakeven set for {name} SELL @ {entry}")
                 be_msg = (
@@ -229,7 +229,6 @@ def _check_trades_inner():
                     f"Current price: {round(price,5)}"
                 )
                 send_channel_reply(be_msg, sig_msg_id)
-                send_all(be_msg)
 
         if tp_hit:
             closed.append((trade, "WIN", abs(tp - entry), now))
@@ -275,7 +274,6 @@ def _check_trades_inner():
                 "\U0001f4ca Stats: " + str(stats["wins"]) + "W / " + str(stats["losses"]) + "L | Win Rate: " + str(winrate) + "%"
             )
             send_channel_reply(msg, sig_msg_id)
-            send_all(msg)
             print("TP hit: " + name)
             _append_journal({"pair":name,"side":signal,"result":"WIN","pips":"+"+str(round(pips,4)),"note":"Auto - TP Hit","date":now})
 
@@ -288,7 +286,6 @@ def _check_trades_inner():
                 "Result: Breakeven \U0001f7e1"
             )
             send_channel_reply(msg, sig_msg_id)
-            send_all(msg)
             print("BE closed: " + name)
             _append_journal({"pair":name,"side":signal,"result":"BE","pips":"0","note":"Auto - Breakeven","date":now})
 
@@ -308,7 +305,6 @@ def _check_trades_inner():
                 "\U0001f4ca Stats: " + str(stats["wins"]) + "W / " + str(stats["losses"]) + "L | Win Rate: " + str(winrate) + "%"
             )
             send_channel_reply(msg, sig_msg_id)
-            send_all(msg)
             print("SL hit: " + name)
             _append_journal({"pair":name,"side":signal,"result":"LOSS","pips":"-"+str(round(pips,4)),"note":"Auto - SL Hit","date":now})
 
@@ -329,7 +325,7 @@ def send_daily_stats():
         "\U0001f3af Win Rate: " + str(winrate) + "%\n"
         "\U0001f4b0 Total P&L: " + str(round(stats["total_pips"], 4)) + " pips"
     )
-    send_all(msg)
+    send_channel_reply(msg)
     print("Daily stats sent!")
 
 def main():
