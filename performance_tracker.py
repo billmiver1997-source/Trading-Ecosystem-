@@ -13,6 +13,7 @@ import pytz
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
 if not TELEGRAM_TOKEN:
     raise RuntimeError("TELEGRAM_TOKEN_SIGNAL is not set in environment")
+SIGNALS_CHANNEL = os.getenv("SIGNALS_CHANNEL")
 USERS_FILE = "/root/tradingbot/users.json"
 TRADES_FILE = "/root/tradingbot/open_trades.json"
 STATS_FILE = "/root/tradingbot/trade_stats.json"
@@ -133,6 +134,25 @@ def send_all(msg):
         except Exception as e:
             print(f"send_all error {chat_id}: {e}")
 
+def send_channel_reply(msg, reply_to_message_id=None):
+    """Send result to signals channel, replying to the original signal message."""
+    if not SIGNALS_CHANNEL or not TELEGRAM_TOKEN:
+        return
+    try:
+        payload = {"chat_id": SIGNALS_CHANNEL, "text": msg[:4000]}
+        if reply_to_message_id:
+            payload["reply_to_message_id"] = reply_to_message_id
+        r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
+            json=payload, timeout=10)
+        if not r.ok and reply_to_message_id:
+            # Original message may have been deleted — retry without reply
+            payload.pop("reply_to_message_id")
+            r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
+                json=payload, timeout=10)
+        r.raise_for_status()
+    except Exception as e:
+        print(f"send_channel_reply error: {e}")
+
 def get_price(symbol):
     try:
         ticker = yf.Ticker(symbol)
@@ -189,22 +209,27 @@ def _check_trades_inner():
         atr = trade.get("atr", 0)
         if atr and not tp_hit and not sl_hit:
             half_move = abs(tp - entry) * 0.5
+            sig_msg_id = trade.get("signal_message_id")
             if signal == "BUY" and price >= entry + half_move and sl < entry:
                 trade["sl"] = round(entry, 5)
                 print(f"Breakeven set for {name} BUY @ {entry}")
-                send_all(
+                be_msg = (
                     f"\U0001f6e1 BREAKEVEN SET\n\n{emoji} {name}\n"
                     f"Trade moved to breakeven @ {round(entry,5)}\n"
                     f"Current price: {round(price,5)}"
                 )
+                send_channel_reply(be_msg, sig_msg_id)
+                send_all(be_msg)
             elif signal == "SELL" and price <= entry - half_move and sl > entry:
                 trade["sl"] = round(entry, 5)
                 print(f"Breakeven set for {name} SELL @ {entry}")
-                send_all(
+                be_msg = (
                     f"\U0001f6e1 BREAKEVEN SET\n\n{emoji} {name}\n"
                     f"Trade moved to breakeven @ {round(entry,5)}\n"
                     f"Current price: {round(price,5)}"
                 )
+                send_channel_reply(be_msg, sig_msg_id)
+                send_all(be_msg)
 
         if tp_hit:
             closed.append((trade, "WIN", abs(tp - entry), now))
@@ -228,6 +253,7 @@ def _check_trades_inner():
         sl = trade["sl"]
         tp = trade["tp"]
         emoji = PAIR_EMOJIS.get(name, "")
+        sig_msg_id = trade.get("signal_message_id")
 
         if "by_pair" not in stats:
             stats["by_pair"] = {}
@@ -248,12 +274,12 @@ def _check_trades_inner():
                 "Result: +"+str(round(pips, 5))+" \U0001f4b0\n\n"
                 "\U0001f4ca Stats: " + str(stats["wins"]) + "W / " + str(stats["losses"]) + "L | Win Rate: " + str(winrate) + "%"
             )
+            send_channel_reply(msg, sig_msg_id)
             send_all(msg)
             print("TP hit: " + name)
             _append_journal({"pair":name,"side":signal,"result":"WIN","pips":"+"+str(round(pips,4)),"note":"Auto - TP Hit","date":now})
 
         elif result == "BE":
-            # Breakeven: SL was moved to entry and hit — does not affect win/loss stats
             msg = (
                 "\U0001f6e1 BREAKEVEN CLOSED\n\n"
                 + emoji + " " + name + " | " + now + "\n\n"
@@ -261,6 +287,7 @@ def _check_trades_inner():
                 "Entry: " + str(round(entry, 5)) + "\n"
                 "Result: Breakeven \U0001f7e1"
             )
+            send_channel_reply(msg, sig_msg_id)
             send_all(msg)
             print("BE closed: " + name)
             _append_journal({"pair":name,"side":signal,"result":"BE","pips":"0","note":"Auto - Breakeven","date":now})
@@ -280,6 +307,7 @@ def _check_trades_inner():
                 "Result: -"+str(round(pips, 5))+" \U0001f4c9\n\n"
                 "\U0001f4ca Stats: " + str(stats["wins"]) + "W / " + str(stats["losses"]) + "L | Win Rate: " + str(winrate) + "%"
             )
+            send_channel_reply(msg, sig_msg_id)
             send_all(msg)
             print("SL hit: " + name)
             _append_journal({"pair":name,"side":signal,"result":"LOSS","pips":"-"+str(round(pips,4)),"note":"Auto - SL Hit","date":now})

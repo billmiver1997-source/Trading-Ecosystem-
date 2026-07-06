@@ -101,8 +101,10 @@ def save_last_signals(data):
         print(f"save_last_signals error: {e}")
 
 def send_signal(msg):
+    """Send signal to channel. Returns message_id for later reply-threading."""
     path = os.path.join(IMAGES_DIR, "signals.jpg")
     cap = msg[:1024]
+    message_id = None
     try:
         fid = _photo_ids.get("signals.jpg")
         if fid and os.path.exists(path):
@@ -120,8 +122,10 @@ def send_signal(msg):
             r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
                 json={"chat_id": SIGNALS_CHANNEL, "text": msg[:4000]}, timeout=10)
         r.raise_for_status()
+        message_id = r.json().get("result", {}).get("message_id")
     except Exception as e:
         print("Send error: "+str(e))
+    return message_id
 
 def is_trading_session():
     tz = pytz.timezone("Europe/Athens")
@@ -405,11 +409,11 @@ def format_poi(name, poi):
         "\u26a0\ufe0f For educational purposes only. Not financial advice. Trading involves significant risk of loss."
     )
 
-def add_trade(name, poi):
+def add_trade(name, poi, signal_message_id=None):
     trades_file = "/root/tradingbot/open_trades.json"
     lock_path = trades_file + '.lock'
     signal = "BUY" if poi["bias"] == "BULLISH" else "SELL"
-    new_trade = {"name": name, "signal": signal, "entry": poi["price"], "sl": poi["sl"], "tp": poi["tp"], "atr": poi["atr"], "time": time.time()}
+    new_trade = {"name": name, "signal": signal, "entry": poi["price"], "sl": poi["sl"], "tp": poi["tp"], "atr": poi["atr"], "time": time.time(), "signal_message_id": signal_message_id}
     # Exclusive lock prevents race with performance_tracker.py
     with open(lock_path, 'w') as _lf:
         fcntl.flock(_lf, fcntl.LOCK_EX)
@@ -595,13 +599,13 @@ def main():
 
             if best_poi:
                 msg = format_poi(best_name, best_poi)
-                send_signal(msg)
+                msg_id = send_signal(msg)
                 signal = "BUY" if best_poi["bias"] == "BULLISH" else "SELL"
                 last_sig_key = f"{best_name}_{signal}"
                 last_signals[last_sig_key] = {"time": now_time, "signal": signal}
                 save_last_signals(last_signals)
-                add_trade(best_name, best_poi)
-                print(f"POI sent: {best_name} {best_poi['bias']} score:{best_score}")
+                add_trade(best_name, best_poi, signal_message_id=msg_id)
+                print(f"POI sent: {best_name} {best_poi['bias']} score:{best_score} msg_id:{msg_id}")
             else:
                 print("Scan complete - no POI found")
 
