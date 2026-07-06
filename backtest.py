@@ -136,8 +136,8 @@ def backtest_pair(name, symbol):
             fib_bear_618 = slo + fib_range * 0.618
             if (fib_bear_50 - fib_tol) <= p <= (fib_bear_618 + fib_tol): se += 1
 
-        # Threshold: 4/7 (mirrors live bot's 4/9 philosophy — OB/FVG not backtest-safe)
-        if sb >= 4 and trend_4h == "BULL":
+        # Threshold: 5/7 (mirrors live bot's 5/9 — OB/FVG not backtest-safe)
+        if sb >= 5 and trend_4h == "BULL":
             sl2 = p - a*1.5; tp = p + a*3
             resolved = False
             for j in range(i+1, min(i+61, len(df))):
@@ -149,7 +149,7 @@ def backtest_pair(name, symbol):
             if not resolved:
                 timeouts += 1
 
-        elif se >= 4 and trend_4h == "BEAR":
+        elif se >= 5 and trend_4h == "BEAR":
             sl2 = p + a*1.5; tp = p - a*3
             resolved = False
             for j in range(i+1, min(i+61, len(df))):

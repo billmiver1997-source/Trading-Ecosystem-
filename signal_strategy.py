@@ -503,16 +503,16 @@ def get_min_score(name):
                 fcntl.flock(_lf, fcntl.LOCK_UN)
         pair_entries = [e for e in entries if e.get("pair") == name][-20:]
         if len(pair_entries) < 10:
-            return 4
+            return 5
         wins = sum(1 for e in pair_entries if e.get("result") == "WIN")
         win_rate = wins / len(pair_entries)
         if win_rate < 0.40:
-            print(f"Low win rate {round(win_rate*100)}% for {name} — raising threshold to 5")
-            return 5
-        return 4
+            print(f"Low win rate {round(win_rate*100)}% for {name} — raising threshold to 6")
+            return 6
+        return 5
     except Exception as e:
         print(f"Score threshold error: {e}")
-        return 4
+        return 5
 
 def main():
     print("POI Strategy started (1H timeframe)...")
