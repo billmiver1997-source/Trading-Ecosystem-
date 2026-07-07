@@ -137,16 +137,36 @@ def send_all(msg):
             print(f"send_all error {chat_id}: {e}")
 
 IMAGES_DIR = "/root/tradingbot/images"
+CURSORS_FILE = "/root/tradingbot/cursors_tracker.json"
 _photo_ids = {}
-_img_cursors = {}  # round-robin counter per image pool
+_img_cursors = {}
 
-WIN_IMAGES  = ["win.jpg",  "win_2.jpg",  "win_3.jpg"]
-LOSS_IMAGES = ["loss.jpg", "loss_2.jpg", "loss_3.jpg"]
-BE_IMAGES   = ["be.jpg",   "be_2.jpg"]
+WIN_IMAGES  = ["win.jpg",  "win_2.jpg",  "win_3.jpg",  "win_4.jpg"]
+LOSS_IMAGES = ["loss.jpg", "loss_2.jpg", "loss_3.jpg", "loss_4.jpg"]
+BE_IMAGES   = ["be.jpg",   "be_2.jpg",   "be_3.jpg"]
+
+def _load_cursors():
+    global _img_cursors
+    try:
+        if os.path.exists(CURSORS_FILE):
+            with open(CURSORS_FILE) as f:
+                _img_cursors = json.load(f)
+    except Exception as e:
+        print(f"load cursors error: {e}")
+
+def _save_cursors():
+    try:
+        tmp = CURSORS_FILE + '.tmp'
+        with open(tmp, 'w') as f:
+            json.dump(_img_cursors, f)
+        os.replace(tmp, CURSORS_FILE)
+    except Exception as e:
+        print(f"save cursors error: {e}")
 
 def _next_photo(category, pool):
     idx = _img_cursors.get(category, 0)
     _img_cursors[category] = (idx + 1) % len(pool)
+    _save_cursors()
     return pool[idx]
 
 def send_channel_reply(msg, reply_to_message_id=None):
@@ -401,6 +421,7 @@ def send_daily_stats():
 
 def main():
     print("Performance tracker started...")
+    _load_cursors()
     last_stats_day = ""
     while True:
         try:

@@ -27,13 +27,23 @@ IMAGES = {
     "loss_3.jpg":     "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=1200&q=85&auto=format&fit=crop",
     "be.jpg":         "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=1200&q=85&auto=format&fit=crop",
     "be_2.jpg":       "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=1200&q=85&auto=format&fit=crop",
-    # Session alerts — city photos per market, 2 each for rotation
+    # Session alerts — city photos per market, 4 each for rotation
     "tokyo.jpg":      "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=1200&q=85&auto=format&fit=crop",
     "tokyo_2.jpg":    "https://images.unsplash.com/photo-1528360983277-13d401cdc186?w=1200&q=85&auto=format&fit=crop",
+    "tokyo_3.jpg":    "https://images.unsplash.com/photo-1490806843957-31f4c9a91c65?w=1200&q=85&auto=format&fit=crop",
+    "tokyo_4.jpg":    "https://images.unsplash.com/photo-1503899036084-c55cdd92da26?w=1200&q=85&auto=format&fit=crop",
     "london.jpg":     "https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?w=1200&q=85&auto=format&fit=crop",
     "london_2.jpg":   "https://images.unsplash.com/photo-1529655683826-aba9b3e77383?w=1200&q=85&auto=format&fit=crop",
+    "london_3.jpg":   "https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?w=1200&q=85&auto=format&fit=crop",
+    "london_4.jpg":   "https://images.unsplash.com/photo-1486299267070-83823f5448dd?w=1200&q=85&auto=format&fit=crop",
     "ny.jpg":         "https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?w=1200&q=85&auto=format&fit=crop",
     "ny_2.jpg":       "https://images.unsplash.com/photo-1534430480872-3498386e7856?w=1200&q=85&auto=format&fit=crop",
+    "ny_3.jpg":       "https://images.unsplash.com/photo-1485871981521-5b1fd3805eee?w=1200&q=85&auto=format&fit=crop",
+    "ny_4.jpg":       "https://images.unsplash.com/photo-1522083165195-3424ed129620?w=1200&q=85&auto=format&fit=crop",
+    # Extra win/loss photos
+    "win_4.jpg":      "https://images.unsplash.com/photo-1543286386-713bdd548da4?w=1200&q=85&auto=format&fit=crop",
+    "loss_4.jpg":     "https://images.unsplash.com/photo-1535320903710-d993d3d77d29?w=1200&q=85&auto=format&fit=crop",
+    "be_3.jpg":       "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=1200&q=85&auto=format&fit=crop",
 }
 
 headers = {"User-Agent": "Mozilla/5.0"}

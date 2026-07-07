@@ -17,6 +17,7 @@ if not TELEGRAM_TOKEN or not SIGNALS_CHANNEL:
     raise RuntimeError("TELEGRAM_TOKEN_SIGNAL and SIGNALS_CHANNEL must be set in .env")
 LAST_SIGNAL_FILE = "/root/tradingbot/last_signals_smc.json"
 IMAGES_DIR = "/root/tradingbot/images"
+CURSORS_FILE = "/root/tradingbot/cursors_signals.json"
 _photo_ids = {}
 
 
@@ -37,11 +38,30 @@ ALL_PAIRS = {
 CRYPTO_PAIRS = ["SOL/USD"]
 ASIAN_PAIRS = {"XAU/USD", "USD/JPY", "AUD/USD", "NZD/USD"}
 SIGNAL_IMAGES = ["signals.jpg", "signals_2.jpg", "signals_3.jpg", "signals_4.jpg", "signals_5.jpg"]
-_img_cursors = {}  # round-robin counter per image pool
+_img_cursors = {}
+
+def _load_cursors():
+    global _img_cursors
+    try:
+        if os.path.exists(CURSORS_FILE):
+            with open(CURSORS_FILE) as f:
+                _img_cursors = json.load(f)
+    except Exception as e:
+        print(f"load cursors error: {e}")
+
+def _save_cursors():
+    try:
+        tmp = CURSORS_FILE + '.tmp'
+        with open(tmp, 'w') as f:
+            json.dump(_img_cursors, f)
+        os.replace(tmp, CURSORS_FILE)
+    except Exception as e:
+        print(f"save cursors error: {e}")
 
 def _next_photo(category, pool):
     idx = _img_cursors.get(category, 0)
     _img_cursors[category] = (idx + 1) % len(pool)
+    _save_cursors()
     return pool[idx]
 
 def get_session_label():
@@ -559,6 +579,7 @@ _daily_signals = {}  # date -> count (in-memory, resets on restart)
 
 def main():
     print("POI Strategy started (1H timeframe)...")
+    _load_cursors()
     last_signals = load_last_signals()
     news_cache = {"time": 0, "blocked": set()}
 

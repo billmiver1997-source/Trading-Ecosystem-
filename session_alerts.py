@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv("/root/tradingbot/.env")
 
+import json
 import requests
 import time
 import pytz
@@ -10,8 +11,9 @@ from datetime import datetime, timedelta
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
 SIGNALS_CHANNEL = os.getenv("SIGNALS_CHANNEL")
 IMAGES_DIR = "/root/tradingbot/images"
+CURSORS_FILE = "/root/tradingbot/cursors_sessions.json"
 _photo_ids = {}
-_img_cursors = {}  # round-robin counter per image pool
+_img_cursors = {}
 
 SESSIONS = [
     {
@@ -21,8 +23,8 @@ SESSIONS = [
         "close": (11, 0),
         "pairs": "USD/JPY \U0001f1ef\U0001f1f5 AUD/USD \U0001f1e6\U0001f1fa NZD/USD \U0001f1f3\U0001f1ff XAU/USD \U0001fa99",
         "note": "Slower, range-bound market. Crypto most active 24/7.",
-        "images_open": ["tokyo.jpg", "tokyo_2.jpg"],
-        "images_close": ["signals_3.jpg", "signals_5.jpg"],
+        "images_open":  ["tokyo.jpg", "tokyo_2.jpg", "tokyo_3.jpg", "tokyo_4.jpg"],
+        "images_close": ["signals_3.jpg", "signals_5.jpg", "signals.jpg", "signals_2.jpg"],
     },
     {
         "name": "London",
@@ -31,8 +33,8 @@ SESSIONS = [
         "close": (19, 0),
         "pairs": "EUR/USD \U0001f1ea\U0001f1fa GBP/USD \U0001f1ec\U0001f1e7 XAU/USD \U0001fa99 Oil ⛽",
         "note": "Trend direction often set here. High volume, sharp moves.",
-        "images_open": ["london.jpg", "london_2.jpg"],
-        "images_close": ["signals_2.jpg", "signals_4.jpg"],
+        "images_open":  ["london.jpg", "london_2.jpg", "london_3.jpg", "london_4.jpg"],
+        "images_close": ["signals_2.jpg", "signals_4.jpg", "signals_3.jpg", "signals_5.jpg"],
     },
     {
         "name": "New York",
@@ -41,15 +43,34 @@ SESSIONS = [
         "close": (23, 0),
         "pairs": "EUR/USD \U0001f1ea\U0001f1fa GBP/USD \U0001f1ec\U0001f1e7 XAU/USD \U0001fa99 USD/CAD \U0001f1e8\U0001f1e6",
         "note": "Peak liquidity 16:00–19:00 (London/NY overlap). Strongest moves of the day.",
-        "images_open": ["ny.jpg", "ny_2.jpg"],
-        "images_close": ["signals.jpg", "signals_3.jpg"],
+        "images_open":  ["ny.jpg", "ny_2.jpg", "ny_3.jpg", "ny_4.jpg"],
+        "images_close": ["signals.jpg", "signals_3.jpg", "signals_4.jpg", "signals_5.jpg"],
     },
 ]
 
 
+def _load_cursors():
+    global _img_cursors
+    try:
+        if os.path.exists(CURSORS_FILE):
+            with open(CURSORS_FILE) as f:
+                _img_cursors = json.load(f)
+    except Exception as e:
+        print(f"load cursors error: {e}")
+
+def _save_cursors():
+    try:
+        tmp = CURSORS_FILE + '.tmp'
+        with open(tmp, 'w') as f:
+            json.dump(_img_cursors, f)
+        os.replace(tmp, CURSORS_FILE)
+    except Exception as e:
+        print(f"save cursors error: {e}")
+
 def _next_photo(category, pool):
     idx = _img_cursors.get(category, 0)
     _img_cursors[category] = (idx + 1) % len(pool)
+    _save_cursors()
     return pool[idx]
 
 
@@ -104,6 +125,7 @@ def get_active_sessions(now_hour, now_min):
 
 def main():
     print("Session alerts started...")
+    _load_cursors()
     tz = pytz.timezone("Europe/Athens")
     sent = {}
 
