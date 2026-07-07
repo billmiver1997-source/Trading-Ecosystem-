@@ -28,7 +28,11 @@ def send_photo_channel(photo_name, caption="", parse_mode=None):
                 payload["parse_mode"] = parse_mode
             r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
                 json=payload, timeout=15)
-        elif os.path.exists(path):
+            if not r.ok:
+                # Stale file_id — evict cache and fall through to re-upload
+                _photo_ids.pop(photo_name, None)
+                fid = None
+        if not fid and os.path.exists(path):
             data = {"chat_id": CHANNEL_ID, "caption": cap, "disable_web_page_preview": "true"}
             if parse_mode:
                 data["parse_mode"] = parse_mode
@@ -39,8 +43,8 @@ def send_photo_channel(photo_name, caption="", parse_mode=None):
             photos = r.json().get("result", {}).get("photo", [])
             if photos:
                 _photo_ids[photo_name] = photos[-1]["file_id"]
-        else:
-            # Fallback: text only
+        elif not fid:
+            # Fallback: text only (no fid and no image file on disk)
             r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
                 json={"chat_id": CHANNEL_ID, "text": cap, "disable_web_page_preview": True,
                       **({"parse_mode": parse_mode} if parse_mode else {})}, timeout=15)
@@ -178,8 +182,8 @@ def main():
             minute = now.minute
             today = now.strftime("%Y-%m-%d")
 
-            # Silence 01:00 - 06:59; sleep until 06:55 to avoid missing the 07:00 window
-            if 1 <= hour < 7:
+            # Silence 00:00 - 06:59; sleep until 06:55 to avoid missing the 07:00 window
+            if hour == 0 or 1 <= hour < 7:
                 print("Silence hours - sleeping...")
                 _now = datetime.now(tz)
                 _wake = _now.replace(hour=6, minute=55, second=0, microsecond=0)
@@ -205,7 +209,8 @@ def main():
                                 safe_url = url.replace("&", "&amp;")
                                 links_section += f'• <a href="{safe_url}">{_html.escape(short)}</a>\n'
                             links_str = links_section.rstrip()
-                            max_base = 1024 - len(links_str)
+                            # Ensure at least 200 chars for the body; guard against links_str > 824 chars
+                            max_base = max(200, 1024 - len(links_str))
                             msg = base[:max_base] + links_str
                             parse_mode = "HTML"
                         else:

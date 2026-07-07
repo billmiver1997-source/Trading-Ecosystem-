@@ -14,6 +14,8 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
 if not TELEGRAM_TOKEN:
     raise RuntimeError("TELEGRAM_TOKEN_SIGNAL is not set in environment")
 SIGNALS_CHANNEL = os.getenv("SIGNALS_CHANNEL")
+if not SIGNALS_CHANNEL:
+    raise RuntimeError("SIGNALS_CHANNEL is not set in environment")
 USERS_FILE = "/root/tradingbot/users.json"
 TRADES_FILE = "/root/tradingbot/open_trades.json"
 STATS_FILE = "/root/tradingbot/trade_stats.json"
@@ -234,8 +236,9 @@ def _check_trades_inner():
             closed.append((trade, "WIN", abs(tp - entry), now))
         elif sl_hit:
             pips_lost = abs(sl - entry)
-            # Breakeven: SL was moved to entry and hit — not a loss
-            result_label = "BE" if pips_lost < 1e-9 else "LOSS"
+            # Breakeven: SL was moved to entry and hit — not a loss.
+            # Use 1e-5 tolerance to absorb float rounding from round(entry, 5).
+            result_label = "BE" if pips_lost < 1e-5 else "LOSS"
             closed.append((trade, result_label, pips_lost, now))
         else:
             remaining.append(trade)
@@ -243,6 +246,10 @@ def _check_trades_inner():
     # Remove closed trades from persistent storage FIRST so a crash here
     # can't cause double-counting on the next check cycle.
     save_trades(remaining)
+
+    # Ensure by_pair key exists before iterating over closed trades
+    if "by_pair" not in stats:
+        stats["by_pair"] = {}
 
     # Now update stats, send notifications, and write journal for each closed trade
     for trade, result, pips, now in closed:
@@ -254,8 +261,6 @@ def _check_trades_inner():
         emoji = PAIR_EMOJIS.get(name, "")
         sig_msg_id = trade.get("signal_message_id")
 
-        if "by_pair" not in stats:
-            stats["by_pair"] = {}
         pair_s = stats["by_pair"].setdefault(name, {"wins": 0, "losses": 0})
 
         if result == "WIN":

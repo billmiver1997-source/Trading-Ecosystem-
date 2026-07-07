@@ -90,7 +90,8 @@ def get_analysis(earnings):
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=400,
-            messages=[{"role":"user","content":"These major companies report earnings today. Write 2-3 simple sentences about what traders should watch and how it might affect markets, USD and risk sentiment. Simple English only.\n\n"+earnings_text}]
+            system="You are a financial analyst briefing traders. Write in plain English only, no markdown.",
+            messages=[{"role":"user","content":"These major companies report earnings today. Write 2-3 simple sentences about what traders should watch and how it might affect markets, USD and risk sentiment.\n\n"+earnings_text}]
         )
         return message.content[0].text
     except Exception as e:

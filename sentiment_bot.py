@@ -5,6 +5,7 @@ load_dotenv("/root/tradingbot/.env")
 import requests
 import time
 import anthropic
+import yfinance as yf
 from datetime import datetime
 import pytz
 
@@ -22,7 +23,11 @@ def send_channel(msg):
         if fid:
             r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
                 json={"chat_id": CHANNEL_ID, "photo": fid, "caption": cap}, timeout=15)
-        elif os.path.exists(path):
+            if not r.ok:
+                # Stale file_id — evict cache and fall through to re-upload
+                _photo_ids.pop("sentiment.jpg", None)
+                fid = None
+        if not fid and os.path.exists(path):
             with open(path, "rb") as pf:
                 r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
                     files={"photo": ("image.jpg", pf, "image/jpeg")},
@@ -30,7 +35,7 @@ def send_channel(msg):
             photos = r.json().get("result", {}).get("photo", [])
             if photos:
                 _photo_ids["sentiment.jpg"] = photos[-1]["file_id"]
-        else:
+        elif not fid:
             r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
                 json={"chat_id": CHANNEL_ID, "text": msg[:4000]}, timeout=10)
         r.raise_for_status()
@@ -59,7 +64,6 @@ def get_fear_greed():
 
 def get_dxy_sentiment():
     try:
-        import yfinance as yf
         df = yf.Ticker("DX-Y.NYB").history(period="5d", interval="1h")
         if len(df) < 25:
             return None
@@ -74,7 +78,6 @@ def get_dxy_sentiment():
 
 def get_gold_sentiment():
     try:
-        import yfinance as yf
         df = yf.Ticker("GC=F").history(period="5d", interval="1h")
         if len(df) < 25:
             return None
@@ -89,7 +92,6 @@ def get_gold_sentiment():
 
 def get_vix():
     try:
-        import yfinance as yf
         df = yf.Ticker("^VIX").history(period="2d", interval="1h")
         if len(df) < 1:
             return None
@@ -128,9 +130,9 @@ def format_message(fg, dxy, gold, vix):
         bar = "█" * (fg["value"] // 10) + "░" * (10 - fg["value"] // 10)
         data += f"Crypto Fear & Greed: {fg['value']}/100 - {fg['classification']} [{bar}]\n"
     if dxy:
-        data += f"DXY (US Dollar): {dxy['value']} | {dxy['change']}% 24h | {dxy['sentiment']}\n"
+        data += f"DXY (US Dollar): {dxy['value']} | {dxy['change']}% 25h | {dxy['sentiment']}\n"
     if gold:
-        data += f"Gold: ${gold['value']} | {gold['change']}% 24h | {gold['sentiment']}\n"
+        data += f"Gold: ${gold['value']} | {gold['change']}% 25h | {gold['sentiment']}\n"
     if vix:
         data += f"VIX (Market Fear): {vix['value']} | {vix['level']}\n"
 
@@ -140,7 +142,8 @@ def format_message(fg, dxy, gold, vix):
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=350,
-            messages=[{"role":"user","content":style+"\n\nData:\n"+data}]
+            system=style,
+            messages=[{"role":"user","content":"Sentiment data:\n"+data}]
         )
         ai_text = message.content[0].text
     except Exception as e:

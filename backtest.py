@@ -85,8 +85,9 @@ def backtest_pair(name, symbol):
     signal_line = macd.ewm(span=9).mean()
     hist = macd - signal_line
     delta = close.diff()
-    gain = delta.clip(lower=0).rolling(14).mean()
-    loss = -delta.clip(upper=0).rolling(14).mean()
+    # Wilder's smoothing (ewm com=13) matches the live signal_strategy.py RSI
+    gain = delta.clip(lower=0).ewm(com=13, min_periods=14).mean()
+    loss = -delta.clip(upper=0).ewm(com=13, min_periods=14).mean()
     loss = loss.replace(0, 1e-10)
     rsi = 100 - (100 / (1 + gain / loss))
     tr = pd.concat([high-low,(high-close.shift()).abs(),(low-close.shift()).abs()],axis=1).max(axis=1)
@@ -96,7 +97,7 @@ def backtest_pair(name, symbol):
     bb_upper = bb_mean + 2 * bb_std
     bb_lower = bb_mean - 2 * bb_std
 
-    wins = losses = timeouts = 0
+    wins = losses = timeouts = ambiguous = 0
     total_pips = 0.0
 
     for i in range(200, len(df)-60):
@@ -143,7 +144,8 @@ def backtest_pair(name, symbol):
             for j in range(i+1, min(i+61, len(df))):
                 sl_hit = low.iloc[j] <= sl2
                 tp_hit = high.iloc[j] >= tp
-                if sl_hit and tp_hit: timeouts+=1; resolved=True; break
+                # Both hit on the same candle — ambiguous, count separately, exclude from P&L
+                if sl_hit and tp_hit: ambiguous+=1; resolved=True; break
                 if sl_hit: losses+=1; total_pips-=abs(p-sl2); resolved=True; break
                 if tp_hit: wins+=1; total_pips+=abs(tp-p); resolved=True; break
             if not resolved:
@@ -155,15 +157,16 @@ def backtest_pair(name, symbol):
             for j in range(i+1, min(i+61, len(df))):
                 sl_hit = high.iloc[j] >= sl2
                 tp_hit = low.iloc[j] <= tp
-                if sl_hit and tp_hit: timeouts+=1; resolved=True; break
+                # Both hit on the same candle — ambiguous, count separately, exclude from P&L
+                if sl_hit and tp_hit: ambiguous+=1; resolved=True; break
                 if sl_hit: losses+=1; total_pips-=abs(sl2-p); resolved=True; break
                 if tp_hit: wins+=1; total_pips+=abs(p-tp); resolved=True; break
             if not resolved:
                 timeouts += 1
 
-    total = wins + losses + timeouts
+    total = wins + losses + timeouts + ambiguous
     winrate = round(wins/total*100, 1) if total > 0 else 0
-    return {"name": name, "wins": wins, "losses": losses, "timeouts": timeouts, "winrate": winrate, "pips": round(total_pips, 4), "signals": total}
+    return {"name": name, "wins": wins, "losses": losses, "timeouts": timeouts, "ambiguous": ambiguous, "winrate": winrate, "pips": round(total_pips, 4), "signals": total}
 
 def run_backtest():
     tz = pytz.timezone("Europe/Athens")
@@ -187,25 +190,27 @@ def run_backtest():
     total_w = sum(r["wins"] for r in results)
     total_l = sum(r["losses"] for r in results)
     total_t = sum(r.get("timeouts", 0) for r in results)
-    total = total_w + total_l + total_t
+    total_a = sum(r.get("ambiguous", 0) for r in results)
+    total = total_w + total_l + total_t + total_a
     overall_wr = round(total_w/total*100, 1) if total > 0 else 0
 
     lines = ["📊 WEEKLY BACKTEST REPORT\n🕔 " + now + " | Last 60 days\n"]
     overall_pips = sum(r["pips"] for r in results)
     pips_sign = "+" if overall_pips >= 0 else ""
     lines.append("📈 Overall Win Rate: " + str(overall_wr) + "%")
-    lines.append("✅ " + str(total_w) + "W  ❌ " + str(total_l) + "L  ⏳ " + str(total_t) + "T")
+    lines.append("✅ " + str(total_w) + "W  ❌ " + str(total_l) + "L  ⏳ " + str(total_t) + "T  ❓ " + str(total_a) + "A")
     lines.append("💰 Net Pips: " + pips_sign + str(round(overall_pips, 2)) + "\n")
 
     for r in results:
         emoji = "🟢" if r["winrate"] >= 55 else "🟡" if r["winrate"] >= 45 else "🔴"
         pips_str = "+" if r["pips"] > 0 else ""
         timeout_str = ("/" + str(r.get("timeouts", 0)) + "T") if r.get("timeouts", 0) else ""
-        lines.append(emoji + " " + r["name"] + ": " + str(r["winrate"]) + "% (" + str(r["wins"]) + "W/" + str(r["losses"]) + "L" + timeout_str + ") | " + pips_str + str(r["pips"]) + " pips")
+        ambiguous_str = ("/" + str(r.get("ambiguous", 0)) + "A") if r.get("ambiguous", 0) else ""
+        lines.append(emoji + " " + r["name"] + ": " + str(r["winrate"]) + "% (" + str(r["wins"]) + "W/" + str(r["losses"]) + "L" + timeout_str + ambiguous_str + ") | " + pips_str + str(r["pips"]) + " pips")
 
     best = results[0]
     lines.append("\n🏆 Best pair: " + best["name"] + " (" + str(best["winrate"]) + "% | " + str(best["signals"]) + " signals)")
-    lines.append("Strategy: SMC + Fibonacci + BB + EMA200 + 4H HTF | 4/7 score | R:R 1:2")
+    lines.append("Strategy: SMC + Fibonacci + BB + EMA200 + 4H HTF | 5/7 score | R:R 1:2")
 
     send_all("\n".join(lines))
     print("Backtest report sent!")

@@ -251,7 +251,7 @@ def get_analysis(pair_name):
         prompt = style + data_context
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=400,
+            max_tokens=700,
             system=system_prompt,
             messages=[{"role":"user","content":prompt}]
         )
@@ -342,7 +342,7 @@ def handle_message(chat_id, text, username, first_name=""):
         text = text.split("@")[0]
     text_lower = text.lower()
 
-    if text_lower in ["/start", "start"] or text_lower.startswith("/start@"):
+    if text_lower in ["/start", "start"]:
         lock_path = USERS_FILE + ".lock"
         with open(lock_path, "w") as _lf:
             fcntl.flock(_lf, fcntl.LOCK_EX)
@@ -356,7 +356,7 @@ def handle_message(chat_id, text, username, first_name=""):
         save_profile(chat_id, username, first_name)
         send_message(chat_id, WELCOME, main_menu())
 
-    elif text_lower == "/stats" or text_lower.startswith("/stats@"):
+    elif text_lower == "/stats":
         if str(chat_id) == OWNER_ID:
             profiles = load_profiles()
             total = len(profiles)
@@ -459,7 +459,7 @@ def handle_message(chat_id, text, username, first_name=""):
             headers = ["📰 LATEST NEWS", "📡 MARKET INTELLIGENCE", "🗞 BREAKING MARKET NEWS", "📊 MARKET UPDATE"]
             message = client.messages.create(
                 model="claude-haiku-4-5-20251001",
-                max_tokens=400,
+                max_tokens=700,
                 system=style,
                 messages=[{"role":"user","content":"Headlines:\n\n"+news_text}]
             )
@@ -507,6 +507,10 @@ def handle_message(chat_id, text, username, first_name=""):
             balance = float(parts.get("BALANCE", 0))
             risk_pct = float(parts.get("RISK", 1))
             sl_pips = float(parts.get("SL PIPS", 20))
+            if balance <= 0:
+                raise ValueError("Balance must be > 0")
+            if risk_pct <= 0 or risk_pct > 100:
+                raise ValueError("Risk % must be between 0 and 100")
             if sl_pips <= 0:
                 raise ValueError("SL pips must be > 0")
             pair = parts.get("PAIR", "EURUSD").upper()
@@ -590,6 +594,9 @@ def handle_message(chat_id, text, username, first_name=""):
                     else:
                         bias = "NEUTRAL 🟡"
                     results.append(tf+": "+bias+" | RSI:"+str(round(rsi,1)))
+                if not results:
+                    send_message(chat_id, "📊 MTF ANALYSIS\n"+pair_name+"\n\n⚠️ Insufficient data for all timeframes.", main_menu())
+                    return
                 agreement = len(set([r.split(":")[1].split("|")[0].strip() for r in results]))
                 # Need at least 2 TFs to declare alignment; a single TF result is never "aligned"
                 overall = "🟢 ALIGNED - Strong signal!" if (agreement == 1 and len(results) >= 2) else "🟡 MIXED - Wait for alignment"

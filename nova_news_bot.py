@@ -240,7 +240,8 @@ def _fetch_sentiment():
         if value >= 75: emoji = "🟢"
         elif value >= 55: emoji = "🟡"
         elif value >= 45: emoji = "🟠"
-        else: emoji = "🔴"
+        elif value >= 25: emoji = "🔴"
+        else: emoji = "💥"
         bar = "█"*(value//10)+"░"*(10-value//10)
         return "🧠 MARKET SENTIMENT"+chr(10)+chr(10)+"Fear & Greed: "+emoji+" "+str(value)+"/100"+chr(10)+"["+bar+"]"+chr(10)+classification
     except Exception as e:
@@ -299,7 +300,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             msg = await asyncio.to_thread(_fetch_calendar_today)
             await update.message.reply_text(msg, reply_markup=MAIN_MENU)
         except Exception as e:
-            await update.message.reply_text("Error: "+str(e), reply_markup=MAIN_MENU)
+            print(f"Calendar handler error: {e}")
+            await update.message.reply_text("📅 Calendar temporarily unavailable. Please try again.", reply_markup=MAIN_MENU)
 
     elif text == "🧠 Sentiment":
         await update.message.reply_text("🔄 Loading...", reply_markup=MAIN_MENU)
@@ -307,7 +309,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             msg = await asyncio.to_thread(_fetch_sentiment)
             await update.message.reply_text(msg, reply_markup=MAIN_MENU)
         except Exception as e:
-            await update.message.reply_text("Error: "+str(e), reply_markup=MAIN_MENU)
+            print(f"Sentiment handler error: {e}")
+            await update.message.reply_text("🧠 Sentiment data temporarily unavailable. Please try again.", reply_markup=MAIN_MENU)
 
     elif text == "\U0001f4f0 Latest News":
         await update.message.reply_text("\U0001f504 Loading...", reply_markup=MAIN_MENU)

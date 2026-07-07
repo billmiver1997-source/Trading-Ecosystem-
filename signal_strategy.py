@@ -110,7 +110,11 @@ def send_signal(msg):
         if fid and os.path.exists(path):
             r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
                 json={"chat_id": SIGNALS_CHANNEL, "photo": fid, "caption": cap}, timeout=15)
-        elif os.path.exists(path):
+            if not r.ok:
+                # Stale file_id — evict cache and retry with upload
+                _photo_ids.pop("signals.jpg", None)
+                fid = None
+        if not fid and os.path.exists(path):
             with open(path, "rb") as pf:
                 r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
                     files={"photo": ("image.jpg", pf, "image/jpeg")},
@@ -118,7 +122,7 @@ def send_signal(msg):
             photos = r.json().get("result", {}).get("photo", [])
             if photos:
                 _photo_ids["signals.jpg"] = photos[-1]["file_id"]
-        else:
+        elif not fid:
             r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
                 json={"chat_id": SIGNALS_CHANNEL, "text": msg[:4000]}, timeout=10)
         r.raise_for_status()
@@ -204,17 +208,17 @@ def find_poi(df, name):
     curr_ema200 = ema200.iloc[-1]
 
     # Bollinger Bands (20-period, 2 std dev)
-    bb_period = min(20, len(close) - 1)
+    bb_period = min(20, len(close))
     bb_mean = close.iloc[-bb_period:].mean()
     bb_std_val = close.iloc[-bb_period:].std()
     bb_upper = bb_mean + 2 * bb_std_val
     bb_lower = bb_mean - 2 * bb_std_val
 
-    # Swing levels
-    swing_high = high.iloc[-20:-1].max()
-    swing_low = low.iloc[-20:-1].min()
-    prev_swing_high = high.iloc[-40:-20].max()
-    prev_swing_low = low.iloc[-40:-20].min()
+    # Swing levels — use 20 closed candles (iloc[-21:-1] = positions -21 through -2 = 20 elements)
+    swing_high = high.iloc[-21:-1].max()
+    swing_low = low.iloc[-21:-1].min()
+    prev_swing_high = high.iloc[-41:-21].max()
+    prev_swing_low = low.iloc[-41:-21].min()
 
     # Fibonacci golden pocket (50–61.8% retracement of 20-bar range)
     fib_range = swing_high - swing_low
@@ -492,7 +496,8 @@ def get_min_score(name):
     journal_lock = journal_file + ".lock"
     try:
         if not os.path.exists(journal_file):
-            return 4
+            # No history at all — use normal bar; don't lower it for unknown pairs
+            return 5
         # Shared read lock prevents reading a torn file during a concurrent write
         with open(journal_lock, "a") as _lf:
             fcntl.flock(_lf, fcntl.LOCK_SH)
