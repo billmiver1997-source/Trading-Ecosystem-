@@ -23,16 +23,16 @@ IMAGES = {
     "win_2.jpg":      "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=1200&q=85&auto=format&fit=crop",
     "win_3.jpg":      "https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?w=1200&q=85&auto=format&fit=crop",
     "loss.jpg":       "https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?w=1200&q=85&auto=format&fit=crop",
-    "loss_2.jpg":     "https://images.unsplash.com/photo-1572731002099-b03e63b73f36?w=1200&q=85&auto=format&fit=crop",
-    "loss_3.jpg":     "https://images.unsplash.com/photo-1554260570-9b94d0b0da47?w=1200&q=85&auto=format&fit=crop",
+    "loss_2.jpg":     "https://images.unsplash.com/photo-1518186285589-2f7649de83e0?w=1200&q=85&auto=format&fit=crop",
+    "loss_3.jpg":     "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=1200&q=85&auto=format&fit=crop",
     "be.jpg":         "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=1200&q=85&auto=format&fit=crop",
-    "be_2.jpg":       "https://images.unsplash.com/photo-1559025386-eb6e3b2b3db3?w=1200&q=85&auto=format&fit=crop",
+    "be_2.jpg":       "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=1200&q=85&auto=format&fit=crop",
     # Session alerts — city photos per market, 2 each for rotation
     "tokyo.jpg":      "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=1200&q=85&auto=format&fit=crop",
     "tokyo_2.jpg":    "https://images.unsplash.com/photo-1528360983277-13d401cdc186?w=1200&q=85&auto=format&fit=crop",
     "london.jpg":     "https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?w=1200&q=85&auto=format&fit=crop",
     "london_2.jpg":   "https://images.unsplash.com/photo-1529655683826-aba9b3e77383?w=1200&q=85&auto=format&fit=crop",
-    "ny.jpg":         "https://images.unsplash.com/photo-1485871981521-5b1fd3805795?w=1200&q=85&auto=format&fit=crop",
+    "ny.jpg":         "https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?w=1200&q=85&auto=format&fit=crop",
     "ny_2.jpg":       "https://images.unsplash.com/photo-1534430480872-3498386e7856?w=1200&q=85&auto=format&fit=crop",
 }
 
