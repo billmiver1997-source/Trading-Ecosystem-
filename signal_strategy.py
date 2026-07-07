@@ -107,7 +107,8 @@ def send_signal(msg):
     message_id = None
     try:
         fid = _photo_ids.get("signals.jpg")
-        if fid and os.path.exists(path):
+        if fid:
+            # Try cached file_id even if local file is absent — Telegram keeps it on its servers
             r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
                 json={"chat_id": SIGNALS_CHANNEL, "photo": fid, "caption": cap}, timeout=15)
             if not r.ok:

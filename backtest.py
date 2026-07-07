@@ -85,9 +85,9 @@ def backtest_pair(name, symbol):
     signal_line = macd.ewm(span=9).mean()
     hist = macd - signal_line
     delta = close.diff()
-    # Wilder's smoothing (ewm com=13) matches the live signal_strategy.py RSI
-    gain = delta.clip(lower=0).ewm(com=13, min_periods=14).mean()
-    loss = -delta.clip(upper=0).ewm(com=13, min_periods=14).mean()
+    # rolling(14).mean() matches the live signal_strategy.py RSI calculation
+    gain = delta.clip(lower=0).rolling(14).mean()
+    loss = -delta.clip(upper=0).rolling(14).mean()
     loss = loss.replace(0, 1e-10)
     rsi = 100 - (100 / (1 + gain / loss))
     tr = pd.concat([high-low,(high-close.shift()).abs(),(low-close.shift()).abs()],axis=1).max(axis=1)

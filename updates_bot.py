@@ -24,7 +24,11 @@ def send(msg, photo_name=None):
             if fid:
                 r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
                     json={"chat_id": CHANNEL_ID, "photo": fid, "caption": cap}, timeout=15)
-            else:
+                if not r.ok:
+                    # Stale file_id — evict cache and fall through to re-upload
+                    _photo_ids.pop(photo_name, None)
+                    fid = None
+            if not fid:
                 with open(path, "rb") as pf:
                     r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
                         files={"photo": ("image.jpg", pf, "image/jpeg")},
