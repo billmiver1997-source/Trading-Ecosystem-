@@ -24,7 +24,6 @@ ALL_PAIRS = {
     "XAU/USD": "GC=F",
     "Silver/USD": "SI=F",
     "Oil/USD": "CL=F",
-    "BTC/USD": "BTC-USD",
     "SOL/USD": "SOL-USD",
     "EUR/USD": "EURUSD=X",
     "GBP/USD": "GBPUSD=X",
@@ -35,7 +34,7 @@ ALL_PAIRS = {
     "USD/JPY": "USDJPY=X",
 }
 
-CRYPTO_PAIRS = ["BTC/USD", "SOL/USD"]
+CRYPTO_PAIRS = ["SOL/USD"]
 ASIAN_PAIRS = {"XAU/USD", "USD/JPY", "AUD/USD", "NZD/USD"}
 SIGNAL_IMAGES = ["signals.jpg", "signals_2.jpg", "signals_3.jpg", "signals_4.jpg", "signals_5.jpg"]
 _img_cursors = {}  # round-robin counter per image pool
@@ -70,6 +69,20 @@ PAIR_EMOJIS = {
     "USD/JPY": "\U0001f1ef\U0001f1f5",
 }
 
+
+def get_weekly_trend(symbol):
+    """Price vs EMA20 on weekly chart — highest timeframe filter."""
+    try:
+        df = yf.Ticker(symbol).history(period="52wk", interval="1wk")
+        if len(df) < 10:
+            return None
+        close = df["Close"]
+        ema20 = close.ewm(span=20).mean().iloc[-1]
+        price = close.iloc[-1]
+        return "BULL" if price > ema20 else "BEAR"
+    except Exception as e:
+        print(f"get_weekly_trend error {symbol}: {e}")
+    return None
 
 def get_trend_4h(symbol):
     try:
@@ -355,8 +368,8 @@ def find_poi(df, name):
     day_high = round(high.iloc[-24:].max(), 5)
     day_low = round(low.iloc[-24:].min(), 5)
 
-    # Threshold: 4/9. Return the stronger side only; skip on a tie.
-    if bull_score >= 4 and bull_score > bear_score:
+    # Threshold: 6/9 minimum. Return the stronger side only; skip on a tie.
+    if bull_score >= 6 and bull_score > bear_score:
         sl = round(price - atr * 1.5, 5)
         if ob_bull_zone and ob_bull_zone[0] > price - atr * 2 and ob_bull_zone[0] < price:
             sl = round(ob_bull_zone[0] - atr * 0.3, 5)
@@ -381,7 +394,7 @@ def find_poi(df, name):
             "day_low": day_low,
         }
 
-    if bear_score >= 4 and bear_score > bull_score:
+    if bear_score >= 6 and bear_score > bull_score:
         sl = round(price + atr * 1.5, 5)
         if ob_bear_zone and ob_bear_zone[1] < price + atr * 2 and ob_bear_zone[1] > price:
             sl = round(ob_bear_zone[1] + atr * 0.3, 5)
@@ -525,33 +538,24 @@ def get_news_blocked_currencies():
         return set()
 
 def get_min_score(name):
-    """Returns required score threshold (out of 9) based on recent win rate for this pair."""
-    journal_file = "/root/tradingbot/journal.json"
-    journal_lock = journal_file + ".lock"
+    """Returns required score threshold (out of 9). Default 6; raises to 7 when global WR < 35%."""
+    stats_file = "/root/tradingbot/trade_stats.json"
     try:
-        if not os.path.exists(journal_file):
-            # No history at all — use normal bar; don't lower it for unknown pairs
-            return 5
-        # Shared read lock prevents reading a torn file during a concurrent write
-        with open(journal_lock, "a") as _lf:
-            fcntl.flock(_lf, fcntl.LOCK_SH)
-            try:
-                with open(journal_file) as f:
-                    entries = json.load(f)
-            finally:
-                fcntl.flock(_lf, fcntl.LOCK_UN)
-        pair_entries = [e for e in entries if e.get("pair") == name][-20:]
-        if len(pair_entries) < 10:
-            return 5
-        wins = sum(1 for e in pair_entries if e.get("result") == "WIN")
-        win_rate = wins / len(pair_entries)
-        if win_rate < 0.40:
-            print(f"Low win rate {round(win_rate*100)}% for {name} — raising threshold to 6")
-            return 6
-        return 5
+        if os.path.exists(stats_file):
+            with open(stats_file) as f:
+                gs = json.load(f)
+            total = gs.get("wins", 0) + gs.get("losses", 0)
+            if total >= 10:
+                wr = gs.get("wins", 0) / total
+                if wr < 0.35:
+                    print(f"Global WR {round(wr*100)}% < 35% — raising threshold to 7 for {name}")
+                    return 7
     except Exception as e:
         print(f"Score threshold error: {e}")
-        return 5
+    return 6
+
+MAX_SIGNALS_PER_DAY = 2
+_daily_signals = {}  # date -> count (in-memory, resets on restart)
 
 def main():
     print("POI Strategy started (1H timeframe)...")
@@ -560,6 +564,13 @@ def main():
 
     while True:
         try:
+            tz_athens = pytz.timezone("Europe/Athens")
+            today_str = datetime.now(tz_athens).strftime("%Y-%m-%d")
+            if _daily_signals.get(today_str, 0) >= MAX_SIGNALS_PER_DAY:
+                print(f"Daily signal limit ({MAX_SIGNALS_PER_DAY}) reached — sleeping 1h")
+                time.sleep(3600)
+                continue
+
             in_session = is_trading_session()
             in_asian = is_asian_session()
             if not in_session and not in_asian:
@@ -624,6 +635,13 @@ def main():
                         if trend_15m and signal == "SELL" and trend_15m == "BULL":
                             continue
 
+                        # Weekly trend — highest timeframe must agree
+                        trend_weekly = get_weekly_trend(symbol)
+                        if trend_weekly and signal == "BUY" and trend_weekly != "BULL":
+                            continue
+                        if trend_weekly and signal == "SELL" and trend_weekly != "BEAR":
+                            continue
+
                         # Performance-adjusted score threshold
                         min_score = get_min_score(name)
                         if poi["score"] < min_score:
@@ -644,7 +662,8 @@ def main():
                 last_signals[last_sig_key] = {"time": now_time, "signal": signal}
                 save_last_signals(last_signals)
                 add_trade(best_name, best_poi, signal_message_id=msg_id)
-                print(f"POI sent: {best_name} {best_poi['bias']} score:{best_score} msg_id:{msg_id}")
+                _daily_signals[today_str] = _daily_signals.get(today_str, 0) + 1
+                print(f"POI sent: {best_name} {best_poi['bias']} score:{best_score} msg_id:{msg_id} (today:{_daily_signals[today_str]}/{MAX_SIGNALS_PER_DAY})")
             else:
                 print("Scan complete - no POI found")
 
