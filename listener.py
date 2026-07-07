@@ -165,10 +165,10 @@ def main_menu():
             [{"text": "📅 Calendar"}, {"text": "📋 Status"}],
             [{"text": "🧮 Risk Calculator"}, {"text": "💥 Volatility Alert"}],
             [{"text": "💼 Portfolio"}, {"text": "📓 Trade Journal"}],
-        [{"text": "📜 Signal History"}, {"text": "📍 S&R Levels"}],
+            [{"text": "📜 Signal History"}, {"text": "📍 S&R Levels"}],
         ],
         "resize_keyboard": True,
-        "one_time_keyboard": True,
+        "one_time_keyboard": False,
         "input_field_placeholder": "Choose an option..."
     }
 def pairs_menu():
@@ -183,7 +183,7 @@ def pairs_menu():
             [{"text": "\U0001f519 Back to Menu"}],
         ],
         "resize_keyboard": True,
-        "one_time_keyboard": True,
+        "one_time_keyboard": False,
         "input_field_placeholder": "Choose an option..."
     }
 
