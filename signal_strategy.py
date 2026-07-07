@@ -38,6 +38,12 @@ ALL_PAIRS = {
 CRYPTO_PAIRS = ["BTC/USD", "SOL/USD"]
 ASIAN_PAIRS = {"XAU/USD", "USD/JPY", "AUD/USD", "NZD/USD"}
 SIGNAL_IMAGES = ["signals.jpg", "signals_2.jpg", "signals_3.jpg", "signals_4.jpg", "signals_5.jpg"]
+_img_cursors = {}  # round-robin counter per image pool
+
+def _next_photo(category, pool):
+    idx = _img_cursors.get(category, 0)
+    _img_cursors[category] = (idx + 1) % len(pool)
+    return pool[idx]
 
 def get_session_label():
     tz = pytz.timezone("Europe/Athens")
@@ -116,9 +122,8 @@ def save_last_signals(data):
         print(f"save_last_signals error: {e}")
 
 def send_signal(msg):
-    """Send signal photo to channel. Rotates through 5 signal images. Returns message_id."""
-    import random
-    photo_name = random.choice(SIGNAL_IMAGES)
+    """Send signal photo to channel. Round-robin through 5 signal images. Returns message_id."""
+    photo_name = _next_photo("signal", SIGNAL_IMAGES)
     path = os.path.join(IMAGES_DIR, photo_name)
     cap = msg[:1024]
     message_id = None

@@ -18,10 +18,22 @@ IMAGES = {
     "signals_3.jpg":  "https://images.unsplash.com/photo-1535320903710-d993d3d77d29?w=1200&q=85&auto=format&fit=crop",
     "signals_4.jpg":  "https://images.unsplash.com/photo-1569025690938-a00729c9e1f9?w=1200&q=85&auto=format&fit=crop",
     "signals_5.jpg":  "https://images.unsplash.com/photo-1559526324-593bc073d938?w=1200&q=85&auto=format&fit=crop",
-    # Trade results
+    # Trade results — 3 per type, round-robin rotation
     "win.jpg":        "https://images.unsplash.com/photo-1579621970795-87facc2f976d?w=1200&q=85&auto=format&fit=crop",
+    "win_2.jpg":      "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=1200&q=85&auto=format&fit=crop",
+    "win_3.jpg":      "https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?w=1200&q=85&auto=format&fit=crop",
     "loss.jpg":       "https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?w=1200&q=85&auto=format&fit=crop",
+    "loss_2.jpg":     "https://images.unsplash.com/photo-1572731002099-b03e63b73f36?w=1200&q=85&auto=format&fit=crop",
+    "loss_3.jpg":     "https://images.unsplash.com/photo-1554260570-9b94d0b0da47?w=1200&q=85&auto=format&fit=crop",
     "be.jpg":         "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=1200&q=85&auto=format&fit=crop",
+    "be_2.jpg":       "https://images.unsplash.com/photo-1559025386-eb6e3b2b3db3?w=1200&q=85&auto=format&fit=crop",
+    # Session alerts — city photos per market, 2 each for rotation
+    "tokyo.jpg":      "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=1200&q=85&auto=format&fit=crop",
+    "tokyo_2.jpg":    "https://images.unsplash.com/photo-1528360983277-13d401cdc186?w=1200&q=85&auto=format&fit=crop",
+    "london.jpg":     "https://images.unsplash.com/photo-1513635269975-59663e0ac1ad?w=1200&q=85&auto=format&fit=crop",
+    "london_2.jpg":   "https://images.unsplash.com/photo-1529655683826-aba9b3e77383?w=1200&q=85&auto=format&fit=crop",
+    "ny.jpg":         "https://images.unsplash.com/photo-1485871981521-5b1fd3805795?w=1200&q=85&auto=format&fit=crop",
+    "ny_2.jpg":       "https://images.unsplash.com/photo-1534430480872-3498386e7856?w=1200&q=85&auto=format&fit=crop",
 }
 
 headers = {"User-Agent": "Mozilla/5.0"}

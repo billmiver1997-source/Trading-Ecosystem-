@@ -8,33 +8,99 @@ import pytz
 from datetime import datetime, timedelta
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
-NEWS_CHANNEL = os.getenv("TELEGRAM_NEWS_CHANNEL")
+SIGNALS_CHANNEL = os.getenv("SIGNALS_CHANNEL")
+IMAGES_DIR = "/root/tradingbot/images"
+_photo_ids = {}
+_img_cursors = {}  # round-robin counter per image pool
 
 SESSIONS = [
-    {"name": "Tokyo", "emoji": "\U0001f30f", "open": (2,0), "close": (11,0), "color": "🔵"},
-    {"name": "London", "emoji": "\U0001f1ec\U0001f1e7", "open": (10,0), "close": (19,0), "color": "🟢"},
-    {"name": "New York", "emoji": "\U0001f1fa\U0001f1f8", "open": (16,0), "close": (23,0), "color": "🔴"},
+    {
+        "name": "Tokyo",
+        "emoji": "\U0001f30f",
+        "open": (2, 0),
+        "close": (11, 0),
+        "pairs": "USD/JPY \U0001f1ef\U0001f1f5 AUD/USD \U0001f1e6\U0001f1fa NZD/USD \U0001f1f3\U0001f1ff XAU/USD \U0001fa99",
+        "note": "Slower, range-bound market. Crypto most active 24/7.",
+        "images_open": ["tokyo.jpg", "tokyo_2.jpg"],
+        "images_close": ["signals_3.jpg", "signals_5.jpg"],
+    },
+    {
+        "name": "London",
+        "emoji": "\U0001f1ec\U0001f1e7",
+        "open": (10, 0),
+        "close": (19, 0),
+        "pairs": "EUR/USD \U0001f1ea\U0001f1fa GBP/USD \U0001f1ec\U0001f1e7 XAU/USD \U0001fa99 Oil ⛽",
+        "note": "Trend direction often set here. High volume, sharp moves.",
+        "images_open": ["london.jpg", "london_2.jpg"],
+        "images_close": ["signals_2.jpg", "signals_4.jpg"],
+    },
+    {
+        "name": "New York",
+        "emoji": "\U0001f5fd",
+        "open": (16, 0),
+        "close": (23, 0),
+        "pairs": "EUR/USD \U0001f1ea\U0001f1fa GBP/USD \U0001f1ec\U0001f1e7 XAU/USD \U0001fa99 USD/CAD \U0001f1e8\U0001f1e6",
+        "note": "Peak liquidity 16:00–19:00 (London/NY overlap). Strongest moves of the day.",
+        "images_open": ["ny.jpg", "ny_2.jpg"],
+        "images_close": ["signals.jpg", "signals_3.jpg"],
+    },
 ]
 
-def send_all(msg):
+
+def _next_photo(category, pool):
+    idx = _img_cursors.get(category, 0)
+    _img_cursors[category] = (idx + 1) % len(pool)
+    return pool[idx]
+
+
+def send_photo(photo_name, caption):
+    if not SIGNALS_CHANNEL or not TELEGRAM_TOKEN:
+        return
+    path = os.path.join(IMAGES_DIR, photo_name)
+    cap = caption[:1024]
     try:
-        r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
-            json={"chat_id": NEWS_CHANNEL, "text": msg[:4000]}, timeout=10)
+        fid = _photo_ids.get(photo_name)
+        if fid:
+            r = requests.post(
+                "https://api.telegram.org/bot" + TELEGRAM_TOKEN + "/sendPhoto",
+                json={"chat_id": SIGNALS_CHANNEL, "photo": fid, "caption": cap},
+                timeout=15,
+            )
+            if not r.ok:
+                _photo_ids.pop(photo_name, None)
+                fid = None
+        if not fid and os.path.exists(path):
+            with open(path, "rb") as pf:
+                r = requests.post(
+                    "https://api.telegram.org/bot" + TELEGRAM_TOKEN + "/sendPhoto",
+                    files={"photo": ("image.jpg", pf, "image/jpeg")},
+                    data={"chat_id": SIGNALS_CHANNEL, "caption": cap},
+                    timeout=15,
+                )
+            photos = r.json().get("result", {}).get("photo", [])
+            if photos:
+                _photo_ids[photo_name] = photos[-1]["file_id"]
+        elif not fid:
+            requests.post(
+                "https://api.telegram.org/bot" + TELEGRAM_TOKEN + "/sendMessage",
+                json={"chat_id": SIGNALS_CHANNEL, "text": cap},
+                timeout=10,
+            )
+            return
         r.raise_for_status()
     except Exception as e:
-        print(f"send_all error: {e}")
+        print(f"send_photo error: {e}")
 
-def get_session_status(now_hour, now_min):
+
+def get_active_sessions(now_hour, now_min):
     active = []
     for s in SESSIONS:
         oh, om = s["open"]
         ch, cm = s["close"]
-        open_mins = oh*60 + om
-        close_mins = ch*60 + cm
-        curr_mins = now_hour*60 + now_min
-        if open_mins <= curr_mins < close_mins:
+        if oh * 60 + om <= now_hour * 60 + now_min < ch * 60 + cm:
             active.append(s["name"])
     return active
+
 
 def main():
     print("Session alerts started...")
@@ -46,72 +112,66 @@ def main():
             now = datetime.now(tz)
             weekday = now.weekday()
 
-            if weekday == 5 or weekday == 6:
-                # Sleep until Monday 00:01 instead of looping every hour for 48h
-                # weekday is 5 or 6 here, so (7 - weekday) % 7 is always 1 or 2
+            if weekday >= 5:
                 days_until_monday = (7 - weekday) % 7
                 monday = (now + timedelta(days=days_until_monday)).replace(
                     hour=0, minute=1, second=0, microsecond=0
                 )
                 sleep_secs = max(60, (monday - now).total_seconds())
-                time.sleep(min(sleep_secs, 86400))  # cap at 24h in case of clock issues
+                time.sleep(min(sleep_secs, 86400))
                 continue
 
             hour = now.hour
             minute = now.minute
+            today = now.strftime("%Y-%m-%d")
+            time_str = now.strftime("%H:%M")
 
             for s in SESSIONS:
                 oh, om = s["open"]
                 ch, cm = s["close"]
 
-                # Alert 30 min before open
-                alert_hour = oh
-                alert_min = om - 30
-                if alert_min < 0:
-                    alert_hour -= 1
-                    alert_min += 60
-
-                alert_key_open = s["name"]+"_open_"+now.strftime("%Y-%m-%d")
-                alert_key_close = s["name"]+"_close_"+now.strftime("%Y-%m-%d")
-
-                if hour == alert_hour and alert_min <= minute < alert_min+5 and alert_key_open not in sent:
-                    active = get_session_status(hour, minute)
-                    active_str = " | ".join(active) if active else "None"
-                    msg = (
-                        "\U000023f0 SESSION OPENING SOON\n\n"
-                        +s["emoji"]+" "+s["name"]+" opens in 30 minutes!\n\n"
-                        "Currently active: "+active_str+"\n\n"
-                        "\U0001f4a1 "+s["name"]+" session = higher volatility on:\n"
-                    )
-                    if s["name"] == "Tokyo":
-                        msg += "JPY pairs, AUD/NZD pairs, Gold"
-                    elif s["name"] == "London":
-                        msg += "EUR, GBP pairs, Gold, Oil"
-                    elif s["name"] == "New York":
-                        msg += "USD pairs, Gold, Oil, S&P500"
-
+                # ── OPEN alert (fires at session open time) ──────────────
+                open_key = s["name"] + "_open_" + today
+                if hour == oh and om <= minute < om + 5 and open_key not in sent:
+                    active = get_active_sessions(hour, minute)
+                    active_str = " | ".join(a for a in active if a != s["name"]) or "—"
+                    overlap_note = ""
                     if s["name"] == "New York":
-                        # London (10:00–19:00) overlaps with NY (16:00–23:00); alert fires 30 min early
-                        msg += "\n\n\U0001f525 OVERLAP: London + NY overlap starts in 30 minutes! Highest volatility period!"
-
-                    send_all(msg)
-                    sent[alert_key_open] = True
-                    print("Sent: "+s["name"]+" opening alert")
-
-                if hour == ch and cm <= minute < cm+5 and alert_key_close not in sent:
+                        overlap_note = "\n\n\U0001f525 London/NY OVERLAP active until 19:00\nHighest liquidity of the day — strong moves expected"
                     msg = (
-                        "\U0001f534 SESSION CLOSING\n\n"
-                        +s["emoji"]+" "+s["name"]+" session closing now.\n\n"
-                        "Volatility may decrease on "+s["name"]+" pairs."
+                        s["emoji"] + " " + s["name"].upper() + " SESSION OPEN\n\n"
+                        "\U0001f552 " + time_str + " Athens\n\n"
+                        "\U0001f4b1 Watch: " + s["pairs"] + "\n\n"
+                        + s["note"]
+                        + overlap_note
                     )
-                    send_all(msg)
-                    sent[alert_key_close] = True
-                    print("Sent: "+s["name"]+" closing alert")
+                    photo = _next_photo(s["name"] + "_open", s["images_open"])
+                    send_photo(photo, msg)
+                    sent[open_key] = True
+                    print("Sent: " + s["name"] + " open alert")
+
+                # ── CLOSE alert (fires at session close time) ─────────────
+                close_key = s["name"] + "_close_" + today
+                if hour == ch and cm <= minute < cm + 5 and close_key not in sent:
+                    active = get_active_sessions(hour, minute)
+                    still_active = [a for a in active if a != s["name"]]
+                    next_str = " | ".join(still_active) if still_active else "Markets quiet until next session"
+                    msg = (
+                        "\U0001f534 " + s["name"].upper() + " SESSION CLOSED\n\n"
+                        + s["emoji"] + " " + time_str + " Athens\n\n"
+                        "Still active: " + next_str + "\n"
+                        "Volatility on " + s["name"] + " pairs may decrease."
+                    )
+                    photo = _next_photo(s["name"] + "_close", s["images_close"])
+                    send_photo(photo, msg)
+                    sent[close_key] = True
+                    print("Sent: " + s["name"] + " close alert")
 
         except Exception as e:
-            print("Error: "+str(e))
+            print("Error: " + str(e))
 
         time.sleep(60)
+
 
 if __name__ == "__main__":
     main()

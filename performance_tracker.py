@@ -138,6 +138,16 @@ def send_all(msg):
 
 IMAGES_DIR = "/root/tradingbot/images"
 _photo_ids = {}
+_img_cursors = {}  # round-robin counter per image pool
+
+WIN_IMAGES  = ["win.jpg",  "win_2.jpg",  "win_3.jpg"]
+LOSS_IMAGES = ["loss.jpg", "loss_2.jpg", "loss_3.jpg"]
+BE_IMAGES   = ["be.jpg",   "be_2.jpg"]
+
+def _next_photo(category, pool):
+    idx = _img_cursors.get(category, 0)
+    _img_cursors[category] = (idx + 1) % len(pool)
+    return pool[idx]
 
 def send_channel_reply(msg, reply_to_message_id=None):
     """Send result to signals channel, replying to the original signal message."""
@@ -263,7 +273,7 @@ def _check_trades_inner():
                     f"Entry: {round(entry,5)}  ➡️  Current: {round(price,5)}\n"
                     f"SL moved to entry — risk = 0 ✅"
                 )
-                send_result_photo("be.jpg", be_msg, sig_msg_id)
+                send_result_photo(_next_photo("be", BE_IMAGES), be_msg, sig_msg_id)
             elif signal == "SELL" and price <= entry - half_move and sl > entry + 1e-6:
                 trade["sl"] = round(entry, 5)
                 open_mins = int((time.time() - trade.get("time", time.time())) / 60)
@@ -275,7 +285,7 @@ def _check_trades_inner():
                     f"Entry: {round(entry,5)}  ➡️  Current: {round(price,5)}\n"
                     f"SL moved to entry — risk = 0 ✅"
                 )
-                send_result_photo("be.jpg", be_msg, sig_msg_id)
+                send_result_photo(_next_photo("be", BE_IMAGES), be_msg, sig_msg_id)
 
         if tp_hit:
             closed.append((trade, "WIN", abs(tp - entry), now))
@@ -327,7 +337,7 @@ def _check_trades_inner():
                 "Profit: +" + str(pips_display) + " " + pips_unit + " \U0001f7e2\n\n"
                 "\U0001f4ca " + str(stats["wins"]) + "W / " + str(stats["losses"]) + "L | WR: " + str(winrate) + "%"
             )
-            send_result_photo("win.jpg", msg, sig_msg_id)
+            send_result_photo(_next_photo("win", WIN_IMAGES), msg, sig_msg_id)
             print("TP hit: " + name)
             _append_journal({"pair":name,"side":signal,"result":"WIN","pips":"+"+str(round(pips,4)),"note":"Auto - TP Hit","date":now})
 
@@ -339,7 +349,7 @@ def _check_trades_inner():
                 + signal + ": Entry " + str(round(entry, 5)) + "\n"
                 "SL hit at entry — capital protected"
             )
-            send_result_photo("be.jpg", msg, sig_msg_id)
+            send_result_photo(_next_photo("be", BE_IMAGES), msg, sig_msg_id)
             print("BE closed: " + name)
             _append_journal({"pair":name,"side":signal,"result":"BE","pips":"0","note":"Auto - Breakeven","date":now})
 
@@ -359,7 +369,7 @@ def _check_trades_inner():
                 "Loss: -" + str(pips_display) + " " + pips_unit + " \U0001f534\n\n"
                 "\U0001f4ca " + str(stats["wins"]) + "W / " + str(stats["losses"]) + "L | WR: " + str(winrate) + "%"
             )
-            send_result_photo("loss.jpg", msg, sig_msg_id)
+            send_result_photo(_next_photo("loss", LOSS_IMAGES), msg, sig_msg_id)
             print("SL hit: " + name)
             _append_journal({"pair":name,"side":signal,"result":"LOSS","pips":"-"+str(round(pips,4)),"note":"Auto - SL Hit","date":now})
 
