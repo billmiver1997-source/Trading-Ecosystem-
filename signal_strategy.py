@@ -37,6 +37,21 @@ ALL_PAIRS = {
 
 CRYPTO_PAIRS = ["BTC/USD", "SOL/USD"]
 ASIAN_PAIRS = {"XAU/USD", "USD/JPY", "AUD/USD", "NZD/USD"}
+SIGNAL_IMAGES = ["signals.jpg", "signals_2.jpg", "signals_3.jpg", "signals_4.jpg", "signals_5.jpg"]
+
+def get_session_label():
+    tz = pytz.timezone("Europe/Athens")
+    hour = datetime.now(tz).hour
+    if 3 <= hour < 10:
+        return "\U0001f30f Asian"
+    elif 10 <= hour < 13:
+        return "\U0001f1ec\U0001f1e7 London"
+    elif 13 <= hour < 16:
+        return "\U0001f525 London/NY"
+    elif 16 <= hour < 23:
+        return "\U0001f5fd New York"
+    else:
+        return "\U0001f319 Off-hours"
 
 PAIR_EMOJIS = {
     "USD/CHF": "\U0001f1fa\U0001f1f8", "AUD/USD": "\U0001f1e6\U0001f1fa",
@@ -101,19 +116,19 @@ def save_last_signals(data):
         print(f"save_last_signals error: {e}")
 
 def send_signal(msg):
-    """Send signal to channel. Returns message_id for later reply-threading."""
-    path = os.path.join(IMAGES_DIR, "signals.jpg")
+    """Send signal photo to channel. Rotates through 5 signal images. Returns message_id."""
+    import random
+    photo_name = random.choice(SIGNAL_IMAGES)
+    path = os.path.join(IMAGES_DIR, photo_name)
     cap = msg[:1024]
     message_id = None
     try:
-        fid = _photo_ids.get("signals.jpg")
+        fid = _photo_ids.get(photo_name)
         if fid:
-            # Try cached file_id even if local file is absent — Telegram keeps it on its servers
             r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
                 json={"chat_id": SIGNALS_CHANNEL, "photo": fid, "caption": cap}, timeout=15)
             if not r.ok:
-                # Stale file_id — evict cache and retry with upload
-                _photo_ids.pop("signals.jpg", None)
+                _photo_ids.pop(photo_name, None)
                 fid = None
         if not fid and os.path.exists(path):
             with open(path, "rb") as pf:
@@ -122,7 +137,7 @@ def send_signal(msg):
                     data={"chat_id": SIGNALS_CHANNEL, "caption": cap}, timeout=15)
             photos = r.json().get("result", {}).get("photo", [])
             if photos:
-                _photo_ids["signals.jpg"] = photos[-1]["file_id"]
+                _photo_ids[photo_name] = photos[-1]["file_id"]
         elif not fid:
             r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
                 json={"chat_id": SIGNALS_CHANNEL, "text": msg[:4000]}, timeout=10)
@@ -330,10 +345,13 @@ def find_poi(df, name):
         bear_score += 1
         bear_reasons.append("Fibonacci golden pocket")
 
-    # Threshold: 4/9. When both sides qualify, return the stronger one; skip on a tie.
+    # Live market context for the signal message
+    change_24h = round((price - close.iloc[-25]) / close.iloc[-25] * 100, 2) if len(close) > 25 else None
+    day_high = round(high.iloc[-24:].max(), 5)
+    day_low = round(low.iloc[-24:].min(), 5)
+
+    # Threshold: 4/9. Return the stronger side only; skip on a tie.
     if bull_score >= 4 and bull_score > bear_score:
-        # Smart SL: use OB/FVG bottom if it gives a tighter zone; else ATR-based
-        # Guard ob/fvg[0] < price so the override never places SL above entry
         sl = round(price - atr * 1.5, 5)
         if ob_bull_zone and ob_bull_zone[0] > price - atr * 2 and ob_bull_zone[0] < price:
             sl = round(ob_bull_zone[0] - atr * 0.3, 5)
@@ -349,15 +367,16 @@ def find_poi(df, name):
             "zone_high": zone_high,
             "sl": sl,
             "tp": tp,
-            "rsi": rsi,
+            "rsi": round(rsi, 1),
             "atr": atr,
             "score": bull_score,
-            "reasons": bull_reasons[:3]
+            "reasons": bull_reasons[:3],
+            "change_24h": change_24h,
+            "day_high": day_high,
+            "day_low": day_low,
         }
 
     if bear_score >= 4 and bear_score > bull_score:
-        # Smart SL: use OB/FVG top if it gives a tighter zone
-        # Guard ob/fvg[1] > price so the override never places SL below entry
         sl = round(price + atr * 1.5, 5)
         if ob_bear_zone and ob_bear_zone[1] < price + atr * 2 and ob_bear_zone[1] > price:
             sl = round(ob_bear_zone[1] + atr * 0.3, 5)
@@ -373,10 +392,13 @@ def find_poi(df, name):
             "zone_high": zone_high,
             "sl": sl,
             "tp": tp,
-            "rsi": rsi,
+            "rsi": round(rsi, 1),
             "atr": atr,
             "score": bear_score,
-            "reasons": bear_reasons[:3]
+            "reasons": bear_reasons[:3],
+            "change_24h": change_24h,
+            "day_high": day_high,
+            "day_low": day_low,
         }
 
     return None
@@ -386,8 +408,7 @@ def format_poi(name, poi):
     bias_emoji = "\U0001f7e2" if poi["bias"] == "BULLISH" else "\U0001f534"
     watch_emoji = "\U0001f4c8" if poi["bias"] == "BULLISH" else "\U0001f4c9"
     tz = pytz.timezone("Europe/Athens")
-    now = datetime.now(tz).strftime("%d/%m/%Y %H:%M")
-    reasons = " | ".join(poi["reasons"])
+    now = datetime.now(tz).strftime("%d/%m %H:%M")
     score = poi["score"]
     if score >= 7:
         quality = "\u2b50\u2b50\u2b50 PREMIUM"
@@ -399,19 +420,26 @@ def format_poi(name, poi):
     sl_dist = abs(poi["sl"] - poi["price"])
     rr_dist = abs(poi["tp"] - poi["price"])
     rr_ratio = round(rr_dist / sl_dist, 1) if sl_dist > 0 else 2.0
+    session = get_session_label()
+    reasons = " \u2022 ".join(poi["reasons"])
+    change = poi.get("change_24h")
+    change_str = ("+" if change and change > 0 else "") + str(change) + "%" if change is not None else "N/A"
+    day_high = poi.get("day_high", "")
+    day_low = poi.get("day_low", "")
+    rsi = poi.get("rsi", "")
     return (
-        "\U0001f3af TRADING SETUP\n\n"
-        + emoji + " " + name + " | " + now + "\n\n"
-        "\U0001f4cd Zone: " + str(poi["zone_low"]) + " - " + str(poi["zone_high"]) + "\n"
-        "\U0001f4ca Bias: " + poi["bias"] + " " + bias_emoji + "\n"
-        "\U0001f3c6 Quality: " + quality + " (" + str(score) + "/9)\n\n"
-        "\u26a1 Why: " + reasons + "\n\n"
-        + watch_emoji + " " + action + " if price returns to zone\n"
-        "\U0001f6d1 SL: " + str(poi["sl"]) + "\n"
-        "\u2705 TP: " + str(poi["tp"]) + "\n"
+        "\U0001f3af TRADING SETUP \u2014 " + name + "\n\n"
+        + emoji + "  " + now + "  |  " + session + "\n"
+        "RSI: " + str(rsi) + "  |  24h: " + change_str + "\n"
+        "\U0001f4ca Range: " + str(day_low) + " \u2013 " + str(day_high) + "\n\n"
+        "\U0001f4cd Zone: " + str(poi["zone_low"]) + " \u2013 " + str(poi["zone_high"]) + "\n"
+        + bias_emoji + " " + poi["bias"] + "  |  " + quality + " (" + str(score) + "/9)\n\n"
+        "\u26a1 " + reasons + "\n\n"
+        + watch_emoji + " " + action + " on return to zone\n"
+        "\U0001f6d1 SL: " + str(poi["sl"]) + "   \u2705 TP: " + str(poi["tp"]) + "\n"
         "\U0001f4d0 R:R = 1:" + str(rr_ratio) + "\n\n"
-        "Strategy: SMC + Fibonacci + BB | 1H\n\n"
-        "\u26a0\ufe0f For educational purposes only. Not financial advice. Trading involves significant risk of loss."
+        "SMC + Fibonacci + BB | 1H\n"
+        "\u26a0\ufe0f Educational only. Not financial advice."
     )
 
 def add_trade(name, poi, signal_message_id=None):

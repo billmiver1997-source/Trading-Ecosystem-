@@ -136,6 +136,9 @@ def send_all(msg):
         except Exception as e:
             print(f"send_all error {chat_id}: {e}")
 
+IMAGES_DIR = "/root/tradingbot/images"
+_photo_ids = {}
+
 def send_channel_reply(msg, reply_to_message_id=None):
     """Send result to signals channel, replying to the original signal message."""
     if not SIGNALS_CHANNEL or not TELEGRAM_TOKEN:
@@ -147,13 +150,49 @@ def send_channel_reply(msg, reply_to_message_id=None):
         r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
             json=payload, timeout=10)
         if not r.ok and reply_to_message_id:
-            # Original message may have been deleted — retry without reply
             payload.pop("reply_to_message_id")
             r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
                 json=payload, timeout=10)
         r.raise_for_status()
     except Exception as e:
         print(f"send_channel_reply error: {e}")
+
+def send_result_photo(photo_name, caption, reply_to_message_id=None):
+    """Send a result photo to the signals channel, optionally as a reply."""
+    if not SIGNALS_CHANNEL or not TELEGRAM_TOKEN:
+        return
+    path = os.path.join(IMAGES_DIR, photo_name)
+    cap = caption[:1024]
+    try:
+        fid = _photo_ids.get(photo_name)
+        if fid:
+            payload = {"chat_id": SIGNALS_CHANNEL, "photo": fid, "caption": cap}
+            if reply_to_message_id:
+                payload["reply_to_message_id"] = reply_to_message_id
+            r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
+                json=payload, timeout=15)
+        elif os.path.exists(path):
+            data = {"chat_id": SIGNALS_CHANNEL, "caption": cap}
+            if reply_to_message_id:
+                data["reply_to_message_id"] = str(reply_to_message_id)
+            with open(path, "rb") as pf:
+                r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
+                    files={"photo": ("image.jpg", pf, "image/jpeg")},
+                    data=data, timeout=15)
+            photos = r.json().get("result", {}).get("photo", [])
+            if photos:
+                _photo_ids[photo_name] = photos[-1]["file_id"]
+        else:
+            send_channel_reply(cap, reply_to_message_id)
+            return
+        if not r.ok and reply_to_message_id:
+            # Retry without reply if the original was deleted
+            send_result_photo(photo_name, caption)
+            return
+        r.raise_for_status()
+    except Exception as e:
+        print(f"send_result_photo error: {e}")
+        send_channel_reply(cap, reply_to_message_id)
 
 def get_price(symbol):
     try:
@@ -215,22 +254,28 @@ def _check_trades_inner():
             # Use 1e-6 epsilon: round(entry,5) < entry by float precision, causing infinite loop
             if signal == "BUY" and price >= entry + half_move and sl < entry - 1e-6:
                 trade["sl"] = round(entry, 5)
+                open_mins = int((time.time() - trade.get("time", time.time())) / 60)
+                dur = f"{open_mins//60}h {open_mins%60}min" if open_mins >= 60 else f"{open_mins}min"
                 print(f"Breakeven set for {name} BUY @ {entry}")
                 be_msg = (
                     f"\U0001f6e1 BREAKEVEN SET\n\n{emoji} {name}\n"
-                    f"Trade moved to breakeven @ {round(entry,5)}\n"
-                    f"Current price: {round(price,5)}"
+                    f"⏱ Open for: {dur}\n"
+                    f"Entry: {round(entry,5)}  ➡️  Current: {round(price,5)}\n"
+                    f"SL moved to entry — risk = 0 ✅"
                 )
-                send_channel_reply(be_msg, sig_msg_id)
+                send_result_photo("be.jpg", be_msg, sig_msg_id)
             elif signal == "SELL" and price <= entry - half_move and sl > entry + 1e-6:
                 trade["sl"] = round(entry, 5)
+                open_mins = int((time.time() - trade.get("time", time.time())) / 60)
+                dur = f"{open_mins//60}h {open_mins%60}min" if open_mins >= 60 else f"{open_mins}min"
                 print(f"Breakeven set for {name} SELL @ {entry}")
                 be_msg = (
                     f"\U0001f6e1 BREAKEVEN SET\n\n{emoji} {name}\n"
-                    f"Trade moved to breakeven @ {round(entry,5)}\n"
-                    f"Current price: {round(price,5)}"
+                    f"⏱ Open for: {dur}\n"
+                    f"Entry: {round(entry,5)}  ➡️  Current: {round(price,5)}\n"
+                    f"SL moved to entry — risk = 0 ✅"
                 )
-                send_channel_reply(be_msg, sig_msg_id)
+                send_result_photo("be.jpg", be_msg, sig_msg_id)
 
         if tp_hit:
             closed.append((trade, "WIN", abs(tp - entry), now))
@@ -263,34 +308,38 @@ def _check_trades_inner():
 
         pair_s = stats["by_pair"].setdefault(name, {"wins": 0, "losses": 0})
 
+        open_mins = int((time.time() - trade.get("time", time.time())) / 60)
+        dur = f"{open_mins//60}h {open_mins%60}min" if open_mins >= 60 else f"{open_mins}min"
+
         if result == "WIN":
             stats["wins"] += 1
             stats["total_pips"] += pips
             pair_s["wins"] += 1
             total = stats["wins"] + stats["losses"]
             winrate = round((stats["wins"] / total) * 100, 1) if total > 0 else 0
+            pips_display = round(pips * (100 if "JPY" in name else 10000), 1) if "XAU" not in name and "BTC" not in name and "SOL" not in name else round(pips, 4)
+            pips_unit = "pips" if "XAU" not in name and "BTC" not in name and "SOL" not in name else ""
             msg = (
-                "\U0001f3af TAKE PROFIT HIT!\n\n"
-                + emoji + " " + name + " | " + now + "\n\n"
-                "Signal: " + signal + "\n"
-                "Entry: " + str(round(entry, 5)) + "\n"
-                "TP: " + str(round(tp, 5)) + "\n"
-                "Result: +"+str(round(pips, 5))+" \U0001f4b0\n\n"
-                "\U0001f4ca Stats: " + str(stats["wins"]) + "W / " + str(stats["losses"]) + "L | Win Rate: " + str(winrate) + "%"
+                "\U0001f3af TAKE PROFIT HIT! \U0001f4b0\n\n"
+                + emoji + " " + name + " | " + now + "\n"
+                "⏱ Duration: " + dur + "\n\n"
+                + signal + ": " + str(round(entry, 5)) + " ➡️ " + str(round(tp, 5)) + "\n"
+                "Profit: +" + str(pips_display) + " " + pips_unit + " \U0001f7e2\n\n"
+                "\U0001f4ca " + str(stats["wins"]) + "W / " + str(stats["losses"]) + "L | WR: " + str(winrate) + "%"
             )
-            send_channel_reply(msg, sig_msg_id)
+            send_result_photo("win.jpg", msg, sig_msg_id)
             print("TP hit: " + name)
             _append_journal({"pair":name,"side":signal,"result":"WIN","pips":"+"+str(round(pips,4)),"note":"Auto - TP Hit","date":now})
 
         elif result == "BE":
             msg = (
-                "\U0001f6e1 BREAKEVEN CLOSED\n\n"
-                + emoji + " " + name + " | " + now + "\n\n"
-                "Signal: " + signal + "\n"
-                "Entry: " + str(round(entry, 5)) + "\n"
-                "Result: Breakeven \U0001f7e1"
+                "\U0001f6e1 BREAKEVEN CLOSED \U0001f7e1\n\n"
+                + emoji + " " + name + " | " + now + "\n"
+                "⏱ Duration: " + dur + "\n\n"
+                + signal + ": Entry " + str(round(entry, 5)) + "\n"
+                "SL hit at entry — capital protected"
             )
-            send_channel_reply(msg, sig_msg_id)
+            send_result_photo("be.jpg", msg, sig_msg_id)
             print("BE closed: " + name)
             _append_journal({"pair":name,"side":signal,"result":"BE","pips":"0","note":"Auto - Breakeven","date":now})
 
@@ -300,16 +349,17 @@ def _check_trades_inner():
             pair_s["losses"] += 1
             total = stats["wins"] + stats["losses"]
             winrate = round((stats["wins"] / total) * 100, 1) if total > 0 else 0
+            pips_display = round(pips * (100 if "JPY" in name else 10000), 1) if "XAU" not in name and "BTC" not in name and "SOL" not in name else round(pips, 4)
+            pips_unit = "pips" if "XAU" not in name and "BTC" not in name and "SOL" not in name else ""
             msg = (
                 "\U0000274c STOP LOSS HIT\n\n"
-                + emoji + " " + name + " | " + now + "\n\n"
-                "Signal: " + signal + "\n"
-                "Entry: " + str(round(entry, 5)) + "\n"
-                "SL: " + str(round(sl, 5)) + "\n"
-                "Result: -"+str(round(pips, 5))+" \U0001f4c9\n\n"
-                "\U0001f4ca Stats: " + str(stats["wins"]) + "W / " + str(stats["losses"]) + "L | Win Rate: " + str(winrate) + "%"
+                + emoji + " " + name + " | " + now + "\n"
+                "⏱ Duration: " + dur + "\n\n"
+                + signal + ": " + str(round(entry, 5)) + " ➡️ " + str(round(sl, 5)) + "\n"
+                "Loss: -" + str(pips_display) + " " + pips_unit + " \U0001f534\n\n"
+                "\U0001f4ca " + str(stats["wins"]) + "W / " + str(stats["losses"]) + "L | WR: " + str(winrate) + "%"
             )
-            send_channel_reply(msg, sig_msg_id)
+            send_result_photo("loss.jpg", msg, sig_msg_id)
             print("SL hit: " + name)
             _append_journal({"pair":name,"side":signal,"result":"LOSS","pips":"-"+str(round(pips,4)),"note":"Auto - SL Hit","date":now})
 
