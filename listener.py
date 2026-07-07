@@ -91,7 +91,7 @@ def load_profiles():
 
 def save_profile(user_id, username, first_name):
     lock_path = PROFILES_FILE + '.lock'
-    with open(lock_path, 'w') as _lf:
+    with open(lock_path, 'a') as _lf:
         fcntl.flock(_lf, fcntl.LOCK_EX)
         try:
             profiles = load_profiles()
@@ -344,7 +344,7 @@ def handle_message(chat_id, text, username, first_name=""):
 
     if text_lower in ["/start", "start"]:
         lock_path = USERS_FILE + ".lock"
-        with open(lock_path, "w") as _lf:
+        with open(lock_path, "a") as _lf:
             fcntl.flock(_lf, fcntl.LOCK_EX)
             try:
                 users = load_users()

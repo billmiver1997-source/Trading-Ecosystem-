@@ -107,7 +107,7 @@ JOURNAL_FILE = "/root/tradingbot/journal.json"
 def _append_journal(entry):
     """Atomically append one entry to journal.json, capped at 200 entries."""
     lock_path = JOURNAL_FILE + ".lock"
-    with open(lock_path, "w") as _lf:
+    with open(lock_path, "a") as _lf:
         fcntl.flock(_lf, fcntl.LOCK_EX)
         try:
             entries = []
@@ -168,7 +168,7 @@ def get_price(symbol):
 def check_trades():
     # Exclusive lock prevents race with signal_strategy.py writing to the same file
     lock_path = TRADES_FILE + '.lock'
-    with open(lock_path, 'w') as _lf:
+    with open(lock_path, 'a') as _lf:
         fcntl.flock(_lf, fcntl.LOCK_EX)
         try:
             _check_trades_inner()

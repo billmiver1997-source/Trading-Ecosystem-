@@ -330,8 +330,8 @@ def find_poi(df, name):
         bear_score += 1
         bear_reasons.append("Fibonacci golden pocket")
 
-    # Threshold: 4/9. When both sides qualify, return the stronger one.
-    if bull_score >= 4 and (bear_score < 4 or bull_score >= bear_score):
+    # Threshold: 4/9. When both sides qualify, return the stronger one; skip on a tie.
+    if bull_score >= 4 and bull_score > bear_score:
         # Smart SL: use OB/FVG bottom if it gives a tighter zone; else ATR-based
         # Guard ob/fvg[0] < price so the override never places SL above entry
         sl = round(price - atr * 1.5, 5)
@@ -355,7 +355,7 @@ def find_poi(df, name):
             "reasons": bull_reasons[:3]
         }
 
-    if bear_score >= 4:
+    if bear_score >= 4 and bear_score > bull_score:
         # Smart SL: use OB/FVG top if it gives a tighter zone
         # Guard ob/fvg[1] > price so the override never places SL below entry
         sl = round(price + atr * 1.5, 5)
@@ -420,7 +420,7 @@ def add_trade(name, poi, signal_message_id=None):
     signal = "BUY" if poi["bias"] == "BULLISH" else "SELL"
     new_trade = {"name": name, "signal": signal, "entry": poi["price"], "sl": poi["sl"], "tp": poi["tp"], "atr": poi["atr"], "time": time.time(), "signal_message_id": signal_message_id}
     # Exclusive lock prevents race with performance_tracker.py
-    with open(lock_path, 'w') as _lf:
+    with open(lock_path, 'a') as _lf:
         fcntl.flock(_lf, fcntl.LOCK_EX)
         try:
             trades = []
