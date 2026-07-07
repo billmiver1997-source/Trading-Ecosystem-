@@ -11,6 +11,8 @@ import yfinance as yf
 import anthropic
 import pytz
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from threading import Thread
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
 ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
@@ -20,6 +22,8 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 OWNER_ID = "8626233751"
 
 _anthropic_client = None
+_analysis_cache = {}  # pair_name -> (timestamp, result_text)
+_ANALYSIS_TTL = 900   # 15 minutes
 
 def _get_anthropic():
     global _anthropic_client
@@ -200,6 +204,14 @@ def links_menu():
     }
 
 def get_analysis(pair_name):
+    cached = _analysis_cache.get(pair_name)
+    if cached and time.time() - cached[0] < _ANALYSIS_TTL:
+        return cached[1] + "\n\n⚡ Live data — cached < 15min"
+    result = _fetch_analysis(pair_name)
+    _analysis_cache[pair_name] = (time.time(), result)
+    return result
+
+def _fetch_analysis(pair_name):
     symbol = SYMBOLS.get(pair_name)
     if not symbol:
         return "Pair not found."
@@ -540,22 +552,34 @@ def handle_message(chat_id, text, username, first_name=""):
     elif text_lower in ["💥 volatility alert", "/volatility"]:
         send_typing(chat_id)
         try:
-            vlines = ["💥 VOLATILITY REPORT\n"]
-            alerts = []
             vpairs = {"EUR/USD":"EURUSD=X","GBP/USD":"GBPUSD=X","XAU/USD":"GC=F","BTC/USD":"BTC-USD","Oil/USD":"CL=F","USD/JPY":"USDJPY=X","USD/CHF":"USDCHF=X","SOL/USD":"SOL-USD","AUD/USD":"AUDUSD=X"}
-            for vname, vsymbol in vpairs.items():
+
+            def _fetch_vol(args):
+                vname, vsymbol = args
                 try:
                     df = yf.Ticker(vsymbol).history(period="5d", interval="1h")
-                    if len(df) < 20: continue
+                    if len(df) < 20: return vname, None
                     atr = ((df["High"]-df["Low"]).rolling(14).mean()).iloc[-1]
                     avg_atr = ((df["High"]-df["Low"]).rolling(14).mean()).mean()
                     pct = round((atr/avg_atr)*100, 0)
-                    if pct > 150: emoji = "🔴"; alerts.append(vname)
-                    elif pct > 120: emoji = "🟠"
-                    else: emoji = "🟢"
-                    vlines.append(emoji+" "+vname+": ATR "+str(round(atr,4))+" ("+str(int(pct))+"% of avg)")
+                    return vname, {"atr": round(atr, 4), "pct": int(pct)}
                 except Exception as e:
                     print(f"Volatility pair error {vname}: {e}")
+                    return vname, None
+
+            with ThreadPoolExecutor(max_workers=8) as ex:
+                vol_results = dict(ex.map(_fetch_vol, vpairs.items()))
+
+            vlines = ["💥 VOLATILITY REPORT\n"]
+            alerts = []
+            for vname in vpairs:
+                data = vol_results.get(vname)
+                if not data: continue
+                pct = data["pct"]
+                if pct > 150: emoji = "🔴"; alerts.append(vname)
+                elif pct > 120: emoji = "🟠"
+                else: emoji = "🟢"
+                vlines.append(emoji+" "+vname+": ATR "+str(data["atr"])+" ("+str(pct)+"% of avg)")
             if alerts:
                 vlines.append("\n🚨 HIGH VOLATILITY: "+" | ".join(alerts))
             send_message(chat_id, "\n".join(vlines), main_menu())
@@ -572,28 +596,41 @@ def handle_message(chat_id, text, username, first_name=""):
             if not symbol:
                 send_message(chat_id, "Pair not found. Example: mtf EURUSD", main_menu())
             else:
+                def _fetch_tf(args):
+                    tf, period = args
+                    try:
+                        df = yf.Ticker(symbol).history(period=period, interval=tf)
+                        if len(df) < 50: return tf, None
+                        close = df["Close"]
+                        ema20 = close.ewm(span=20).mean().iloc[-1]
+                        ema50 = close.ewm(span=50).mean().iloc[-1]
+                        delta = close.diff()
+                        gain = delta.clip(lower=0).rolling(14).mean()
+                        loss_s = -delta.clip(upper=0).rolling(14).mean()
+                        loss_s = loss_s.replace(0, 1e-10)
+                        rsi = (100-(100/(1+gain/loss_s))).iloc[-1]
+                        macd_line = close.ewm(span=12).mean()-close.ewm(span=26).mean()
+                        macd_v = macd_line.iloc[-1]
+                        macd_sig = macd_line.ewm(span=9).mean().iloc[-1]
+                        if ema20 > ema50 and macd_v > macd_sig and rsi > 50:
+                            bias = "BULLISH 🟢"
+                        elif ema20 < ema50 and macd_v < macd_sig and rsi < 50:
+                            bias = "BEARISH 🔴"
+                        else:
+                            bias = "NEUTRAL 🟡"
+                        return tf, bias, round(rsi, 1)
+                    except Exception as e:
+                        print(f"MTF tf error {tf}: {e}")
+                        return tf, None, None
+
+                tf_order = [("15m","5d"),("1h","10d"),("4h","30d")]
+                with ThreadPoolExecutor(max_workers=3) as ex:
+                    tf_raw = list(ex.map(_fetch_tf, tf_order))
                 results = []
-                for tf, period in [("15m","5d"),("1h","10d"),("4h","30d")]:
-                    df = yf.Ticker(symbol).history(period=period, interval=tf)
-                    if len(df) < 50: continue
-                    close = df["Close"]
-                    ema20 = close.ewm(span=20).mean().iloc[-1]
-                    ema50 = close.ewm(span=50).mean().iloc[-1]
-                    delta = close.diff()
-                    gain = delta.clip(lower=0).rolling(14).mean()
-                    loss = -delta.clip(upper=0).rolling(14).mean()
-                    loss = loss.replace(0, 1e-10)  # prevent NaN RSI on all-flat windows
-                    rsi = (100-(100/(1+gain/loss))).iloc[-1]
-                    macd_line = close.ewm(span=12).mean()-close.ewm(span=26).mean()
-                    macd = macd_line.iloc[-1]
-                    macd_sig = macd_line.ewm(span=9).mean().iloc[-1]
-                    if ema20 > ema50 and macd > macd_sig and rsi > 50:
-                        bias = "BULLISH 🟢"
-                    elif ema20 < ema50 and macd < macd_sig and rsi < 50:
-                        bias = "BEARISH 🔴"
-                    else:
-                        bias = "NEUTRAL 🟡"
-                    results.append(tf+": "+bias+" | RSI:"+str(round(rsi,1)))
+                for row in tf_raw:
+                    tf = row[0]; bias = row[1]; rsi_v = row[2]
+                    if bias:
+                        results.append(tf+": "+bias+" | RSI:"+str(rsi_v))
                 if not results:
                     send_message(chat_id, "📊 MTF ANALYSIS\n"+pair_name+"\n\n⚠️ Insufficient data for all timeframes.", main_menu())
                     return
@@ -623,32 +660,41 @@ def handle_message(chat_id, text, username, first_name=""):
             if not trades:
                 send_message(chat_id, "💼 PORTFOLIO\n\nNo open signals right now.", main_menu())
             else:
-                total_pl = 0
-                lines_p = ["💼 PORTFOLIO | Open Signals\n"]
-                for t in trades:
+                _pip_sizes = {
+                    "XAU/USD": 0.01, "Silver/USD": 0.001, "Oil/USD": 0.01,
+                    "BTC/USD": 1.0, "SOL/USD": 0.01, "DXY": 0.001,
+                }
+
+                def _fetch_pl(t):
                     symbol = SYMBOLS.get(t["name"], "")
-                    if not symbol:
-                        continue
+                    if not symbol: return t, None
                     try:
-                        df = yf.Ticker(symbol).history(period="5d", interval="1h")
-                        price = df["Close"].iloc[-1]
-                        entry = t["entry"]
-                        # Instrument-specific pip sizes for correct pip display
-                        _pip_sizes = {
-                            "XAU/USD": 0.01, "Silver/USD": 0.001, "Oil/USD": 0.01,
-                            "BTC/USD": 1.0, "SOL/USD": 0.01, "DXY": 0.001,
-                        }
-                        pip_size = _pip_sizes.get(t["name"], 0.01 if "JPY" in t["name"] else 0.0001)
-                        if t["signal"] == "BUY":
-                            pl_pips = round((price - entry) / pip_size, 1)
-                        else:
-                            pl_pips = round((entry - price) / pip_size, 1)
-                        pl_emoji = "🟢" if pl_pips > 0 else "🔴"
-                        total_pl += pl_pips  # accumulate pips (not USD — no lot size available)
-                        lines_p.append(pl_emoji+" "+t["name"]+" "+t["signal"]+" @ "+str(round(entry,4))+" | "+str(pl_pips)+" pips")
+                        df = yf.Ticker(symbol).history(period="1d", interval="5m")
+                        if len(df) == 0:
+                            df = yf.Ticker(symbol).history(period="5d", interval="1h")
+                        return t, float(df["Close"].iloc[-1])
                     except Exception as e:
                         print(f"Portfolio P&L error for {t.get('name','?')}: {e}")
+                        return t, None
+
+                with ThreadPoolExecutor(max_workers=8) as ex:
+                    pl_results = list(ex.map(_fetch_pl, trades))
+
+                total_pl = 0
+                lines_p = ["💼 PORTFOLIO | Open Signals\n"]
+                for t, price in pl_results:
+                    if price is None:
                         lines_p.append("🟡 "+t["name"]+" "+t["signal"]+" @ "+str(round(t["entry"],4)))
+                        continue
+                    entry = t["entry"]
+                    pip_size = _pip_sizes.get(t["name"], 0.01 if "JPY" in t["name"] else 0.0001)
+                    if t["signal"] == "BUY":
+                        pl_pips = round((price - entry) / pip_size, 1)
+                    else:
+                        pl_pips = round((entry - price) / pip_size, 1)
+                    pl_emoji = "🟢" if pl_pips > 0 else "🔴"
+                    total_pl += pl_pips
+                    lines_p.append(pl_emoji+" "+t["name"]+" "+t["signal"]+" @ "+str(round(entry,4))+" | "+str(pl_pips)+" pips")
                 total_emoji = "🟢" if total_pl > 0 else "🔴"
                 lines_p.append("\n"+total_emoji+" Total: "+str(round(total_pl,1))+" pips est.")
                 send_message(chat_id, "\n".join(lines_p), main_menu())
@@ -869,24 +915,36 @@ def handle_message(chat_id, text, username, first_name=""):
         send_typing(chat_id)
         try:
             pairs = {"EUR/USD":"EURUSD=X","GBP/USD":"GBPUSD=X","XAU/USD":"GC=F","BTC/USD":"BTC-USD","Oil/USD":"CL=F","USD/JPY":"USDJPY=X","USD/CHF":"USDCHF=X","AUD/USD":"AUDUSD=X","NZD/USD":"NZDUSD=X","USD/CAD":"USDCAD=X","SOL/USD":"SOL-USD","Silver/USD":"SI=F","Copper/USD":"HG=F","DXY":"DX-Y.NYB"}
-            lines_sr = ["📍 SUPPORT & RESISTANCE"]
-            for name, symbol in pairs.items():
+
+            def _fetch_sr(args):
+                name, symbol = args
                 try:
                     df = yf.Ticker(symbol).history(period="30d", interval="1d")
-                    if len(df) < 10: continue
+                    if len(df) < 10: return name, None
                     price = df["Close"].iloc[-1]
-                    # Filter levels relative to current price so R/S labels are always correct
                     res = sorted([h for h in df["High"].values if h > price])
                     sup = sorted([l for l in df["Low"].values if l < price], reverse=True)
-                    r1 = round(res[0], 4) if len(res) > 0 else "N/A"
-                    r2 = round(res[1], 4) if len(res) > 1 else "N/A"
-                    s1 = round(sup[0], 4) if len(sup) > 0 else "N/A"
-                    s2 = round(sup[1], 4) if len(sup) > 1 else "N/A"
-                    lines_sr.append("\n"+name+" | "+str(round(price,4)))
-                    lines_sr.append("🔴 R2: "+str(r2)+" | R1: "+str(r1))
-                    lines_sr.append("🟢 S1: "+str(s1)+" | S2: "+str(s2))
+                    return name, {
+                        "price": round(price, 4),
+                        "r1": round(res[0], 4) if res else "N/A",
+                        "r2": round(res[1], 4) if len(res) > 1 else "N/A",
+                        "s1": round(sup[0], 4) if sup else "N/A",
+                        "s2": round(sup[1], 4) if len(sup) > 1 else "N/A",
+                    }
                 except Exception as e:
                     print(f"S&R pair error {name}: {e}")
+                    return name, None
+
+            with ThreadPoolExecutor(max_workers=8) as ex:
+                sr_results = dict(ex.map(_fetch_sr, pairs.items()))
+
+            lines_sr = ["📍 SUPPORT & RESISTANCE"]
+            for name in pairs:
+                data = sr_results.get(name)
+                if not data: continue
+                lines_sr.append("\n"+name+" | "+str(data["price"]))
+                lines_sr.append("🔴 R2: "+str(data["r2"])+" | R1: "+str(data["r1"]))
+                lines_sr.append("🟢 S1: "+str(data["s1"])+" | S2: "+str(data["s2"]))
             send_message(chat_id, "\n".join(lines_sr), main_menu())
         except Exception as e:
             print(f"S&R handler error: {e}")
@@ -894,6 +952,36 @@ def handle_message(chat_id, text, username, first_name=""):
 
     else:
         send_message(chat_id, "Use the menu below:", main_menu())
+
+def _process_update(update):
+    try:
+        msg = update.get("message", {})
+        chat_id = str(msg.get("chat", {}).get("id", ""))
+        text = msg.get("text", "")
+        username = msg.get("from", {}).get("username", "")
+        first_name = msg.get("from", {}).get("first_name", "")
+        if text and chat_id:
+            handle_message(chat_id, text, username, first_name)
+        callback = update.get("callback_query", {})
+        if callback:
+            cb_chat_id = str(callback.get("message", {}).get("chat", {}).get("id", ""))
+            cb_data = callback.get("data", "")
+            cb_id = callback.get("id", "")
+            cb_username = callback.get("from", {}).get("username", "")
+            cb_first_name = callback.get("from", {}).get("first_name", "")
+            answer_callback(cb_id)
+            if cb_data == "cmd_news":
+                handle_message(cb_chat_id, "🌍 news", cb_username, cb_first_name)
+            elif cb_data == "cmd_analysis":
+                handle_message(cb_chat_id, "📊 analysis", cb_username, cb_first_name)
+            elif cb_data == "cmd_sentiment":
+                handle_message(cb_chat_id, "🧠 sentiment", cb_username, cb_first_name)
+            elif cb_data == "cmd_calendar":
+                handle_message(cb_chat_id, "📅 calendar", cb_username, cb_first_name)
+            elif cb_data == "cmd_status":
+                handle_message(cb_chat_id, "📋 status", cb_username, cb_first_name)
+    except Exception as e:
+        print(f"_process_update error: {e}")
 
 def main():
     set_commands()
@@ -904,31 +992,7 @@ def main():
             result = get_updates(offset)
             for update in result.get("result", []):
                 offset = update["update_id"] + 1
-                msg = update.get("message", {})
-                chat_id = str(msg.get("chat", {}).get("id", ""))
-                text = msg.get("text", "")
-                username = msg.get("from", {}).get("username", "")
-                first_name = msg.get("from", {}).get("first_name", "")
-                if text and chat_id:
-                    handle_message(chat_id, text, username, first_name)
-                callback = update.get("callback_query", {})
-                if callback:
-                    cb_chat_id = str(callback.get("message", {}).get("chat", {}).get("id", ""))
-                    cb_data = callback.get("data", "")
-                    cb_id = callback.get("id", "")
-                    cb_username = callback.get("from", {}).get("username", "")
-                    cb_first_name = callback.get("from", {}).get("first_name", "")
-                    answer_callback(cb_id)
-                    if cb_data == "cmd_news":
-                        handle_message(cb_chat_id, "🌍 news", cb_username, cb_first_name)
-                    elif cb_data == "cmd_analysis":
-                        handle_message(cb_chat_id, "📊 analysis", cb_username, cb_first_name)
-                    elif cb_data == "cmd_sentiment":
-                        handle_message(cb_chat_id, "🧠 sentiment", cb_username, cb_first_name)
-                    elif cb_data == "cmd_calendar":
-                        handle_message(cb_chat_id, "📅 calendar", cb_username, cb_first_name)
-                    elif cb_data == "cmd_status":
-                        handle_message(cb_chat_id, "📋 status", cb_username, cb_first_name)
+                Thread(target=_process_update, args=(update,), daemon=True).start()
         except Exception as e:
             print("Error: "+str(e))
             time.sleep(5)
