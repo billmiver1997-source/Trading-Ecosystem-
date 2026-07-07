@@ -181,7 +181,11 @@ def send_result_photo(photo_name, caption, reply_to_message_id=None):
                 payload["reply_to_message_id"] = reply_to_message_id
             r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
                 json=payload, timeout=15)
-        elif os.path.exists(path):
+            if not r.ok:
+                # Stale file_id — evict cache and fall through to re-upload
+                _photo_ids.pop(photo_name, None)
+                fid = None
+        if not fid and os.path.exists(path):
             data = {"chat_id": SIGNALS_CHANNEL, "caption": cap}
             if reply_to_message_id:
                 data["reply_to_message_id"] = str(reply_to_message_id)
@@ -192,7 +196,7 @@ def send_result_photo(photo_name, caption, reply_to_message_id=None):
             photos = r.json().get("result", {}).get("photo", [])
             if photos:
                 _photo_ids[photo_name] = photos[-1]["file_id"]
-        else:
+        elif not fid:
             send_channel_reply(cap, reply_to_message_id)
             return
         if not r.ok and reply_to_message_id:
@@ -327,8 +331,9 @@ def _check_trades_inner():
             pair_s["wins"] += 1
             total = stats["wins"] + stats["losses"]
             winrate = round((stats["wins"] / total) * 100, 1) if total > 0 else 0
-            pips_display = round(pips * (100 if "JPY" in name else 10000), 1) if "XAU" not in name and "BTC" not in name and "SOL" not in name else round(pips, 4)
-            pips_unit = "pips" if "XAU" not in name and "BTC" not in name and "SOL" not in name else ""
+            _is_raw = any(k in name for k in ("XAU", "BTC", "SOL", "Silver", "Oil", "Copper"))
+            pips_display = round(pips * (100 if "JPY" in name else 10000), 1) if not _is_raw else round(pips, 4)
+            pips_unit = "pips" if not _is_raw else ""
             msg = (
                 "\U0001f3af TAKE PROFIT HIT! \U0001f4b0\n\n"
                 + emoji + " " + name + " | " + now + "\n"
@@ -359,8 +364,9 @@ def _check_trades_inner():
             pair_s["losses"] += 1
             total = stats["wins"] + stats["losses"]
             winrate = round((stats["wins"] / total) * 100, 1) if total > 0 else 0
-            pips_display = round(pips * (100 if "JPY" in name else 10000), 1) if "XAU" not in name and "BTC" not in name and "SOL" not in name else round(pips, 4)
-            pips_unit = "pips" if "XAU" not in name and "BTC" not in name and "SOL" not in name else ""
+            _is_raw = any(k in name for k in ("XAU", "BTC", "SOL", "Silver", "Oil", "Copper"))
+            pips_display = round(pips * (100 if "JPY" in name else 10000), 1) if not _is_raw else round(pips, 4)
+            pips_unit = "pips" if not _is_raw else ""
             msg = (
                 "\U0000274c STOP LOSS HIT\n\n"
                 + emoji + " " + name + " | " + now + "\n"

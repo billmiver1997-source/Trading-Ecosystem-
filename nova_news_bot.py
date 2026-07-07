@@ -268,6 +268,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg, reply_markup=MAIN_MENU)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.text:
+        return
     text = update.message.text
     tz = pytz.timezone("Europe/Athens")
     now = datetime.now(tz).strftime("%d/%m/%Y %H:%M")
