@@ -12,8 +12,8 @@ import yfinance as yf
 import anthropic
 import pytz
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from threading import Thread
+from concurrent.futures import ThreadPoolExecutor
+from threading import Thread, Lock
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
 ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
@@ -24,6 +24,7 @@ OWNER_ID = "8626233751"
 
 _anthropic_client = None
 _analysis_cache = {}  # pair_name -> (timestamp, result_text)
+_analysis_cache_lock = Lock()
 _ANALYSIS_TTL = 900   # 15 minutes
 
 def _get_anthropic():
@@ -205,11 +206,14 @@ def links_menu():
     }
 
 def get_analysis(pair_name):
-    cached = _analysis_cache.get(pair_name)
-    if cached and time.time() - cached[0] < _ANALYSIS_TTL:
-        return cached[1] + "\n\n⚡ Live data — cached < 15min"
+    with _analysis_cache_lock:
+        cached = _analysis_cache.get(pair_name)
+        if cached and time.time() - cached[0] < _ANALYSIS_TTL:
+            return cached[1] + "\n\n⚡ Live data — cached < 15min"
+    # Fetch outside lock so concurrent requests for different pairs don't serialize
     result = _fetch_analysis(pair_name)
-    _analysis_cache[pair_name] = (time.time(), result)
+    with _analysis_cache_lock:
+        _analysis_cache[pair_name] = (time.time(), result)
     return result
 
 def _fetch_analysis(pair_name):
@@ -341,6 +345,8 @@ def set_commands():
                 {"command": "risk", "description": "Risk/lot size calculator"},
                 {"command": "volatility", "description": "Volatility report"},
                 {"command": "mtf", "description": "Multi-timeframe analysis: /mtf EURUSD"},
+                {"command": "ibtracker", "description": "IB client tracker"},
+                {"command": "commission", "description": "Commission calculator"},
             ]
         })
         r.raise_for_status()
@@ -558,8 +564,11 @@ def handle_message(chat_id, text, username, first_name=""):
                 try:
                     df = yf.Ticker(vsymbol).history(period="5d", interval="1h")
                     if len(df) < 20: return vname, None
-                    atr = ((df["High"]-df["Low"]).rolling(14).mean()).iloc[-1]
-                    avg_atr = ((df["High"]-df["Low"]).rolling(14).mean()).mean()
+                    prev_close = df["Close"].shift(1)
+                    tr = pd.concat([df["High"]-df["Low"], (df["High"]-prev_close).abs(), (df["Low"]-prev_close).abs()], axis=1).max(axis=1)
+                    atr_series = tr.rolling(14).mean()
+                    atr = atr_series.iloc[-1]
+                    avg_atr = atr_series.mean()
                     pct = round((atr/avg_atr)*100, 0)
                     return vname, {"atr": round(atr, 4), "pct": int(pct)}
                 except Exception as e:
@@ -985,6 +994,7 @@ def _process_update(update):
         print(f"_process_update error: {e}")
 
 _keyboard_sent = set()  # chat_ids that already have the keyboard
+_update_executor = ThreadPoolExecutor(max_workers=20, thread_name_prefix="update")
 
 def _ensure_keyboard(chat_id):
     """Send keyboard to a chat if it hasn't received one since the last restart."""
@@ -1001,7 +1011,7 @@ def main():
             result = get_updates(offset)
             for update in result.get("result", []):
                 offset = update["update_id"] + 1
-                Thread(target=_process_update, args=(update,), daemon=True).start()
+                _update_executor.submit(_process_update, update)
         except Exception as e:
             print("Error: "+str(e))
             time.sleep(5)

@@ -7,7 +7,7 @@ strategy already trades on, with EMA20/50/200 + entry/SL/TP levels drawn on top.
 import os
 import warnings
 warnings.filterwarnings("ignore")
-from datetime import datetime
+from datetime import datetime, timezone
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -83,7 +83,7 @@ def make_result_chart(name, symbol, signal, entry, sl, tp, entry_time, result_la
     # df.index's datetime64 resolution varies across pandas versions (e.g. pandas 3.x
     # defaults differently than 2.x) and searchsorted() with a mismatched-unit
     # Timestamp raises "Cannot losslessly convert units" on some of those versions.
-    entry_dt = datetime.utcfromtimestamp(entry_time)
+    entry_dt = datetime.fromtimestamp(entry_time, tz=timezone.utc).replace(tzinfo=None)
     # Pad a few candles before entry for context, keep everything after through to now
     idx_pos = int((df.index <= entry_dt).sum())
     start = max(0, idx_pos - 10)

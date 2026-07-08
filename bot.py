@@ -25,6 +25,14 @@ if not TOKEN:
 if not ANTHROPIC_API_KEY:
     raise RuntimeError("ANTHROPIC_API_KEY is not set in environment")
 
+_anthropic_client = None
+
+def _get_anthropic():
+    global _anthropic_client
+    if _anthropic_client is None:
+        _anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+    return _anthropic_client
+
 def load_profiles():
     if os.path.exists(PROFILES_FILE):
         try:
@@ -277,7 +285,7 @@ def get_education(topic):
     if not prompt_text:
         return "Education content for this topic is not available."
     try:
-        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        client = _get_anthropic()
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=600,

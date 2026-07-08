@@ -54,7 +54,7 @@ def backtest_pair(name, symbol):
     try:
         df = yf.Ticker(symbol).history(period="90d", interval="1h")
         if len(df) < 300:
-            df = yf.Ticker(symbol).history(period="60d", interval="1h")
+            df = yf.Ticker(symbol).history(period="180d", interval="1h")
     except Exception as e:
         print(f"backtest_pair data error {name}: {e}")
         return None
@@ -167,7 +167,9 @@ def run_backtest():
     total_t = sum(r.get("timeouts", 0) for r in results)
     total_a = sum(r.get("ambiguous", 0) for r in results)
     total = total_w + total_l + total_t + total_a
-    overall_wr = round(total_w/total*100, 1) if total > 0 else 0
+    # Match per-pair WR: exclude timeouts and ambiguous from the denominator
+    decided_total = total_w + total_l
+    overall_wr = round(total_w / decided_total * 100, 1) if decided_total > 0 else 0
     overall_R = sum(r["total_R"] for r in results)
 
     lines = ["📊 WEEKLY BACKTEST REPORT\n🕔 " + now + " | Last 90 days\n"]
