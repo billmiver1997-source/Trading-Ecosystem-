@@ -7,11 +7,11 @@ strategy already trades on, with EMA20/50/200 + entry/SL/TP levels drawn on top.
 import os
 import warnings
 warnings.filterwarnings("ignore")
+from datetime import datetime
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import mplfinance as mpf
-import pandas as pd
 import yfinance as yf
 
 CHARTS_DIR = os.getenv("CHARTS_DIR", "/root/tradingbot/charts")
@@ -79,9 +79,13 @@ def make_result_chart(name, symbol, signal, entry, sl, tp, entry_time, result_la
     if df is None or len(df) < 5:
         return None
 
-    entry_ts = pd.Timestamp(entry_time, unit="s")
+    # Compare against a plain python datetime rather than a numpy/pandas Timestamp —
+    # df.index's datetime64 resolution varies across pandas versions (e.g. pandas 3.x
+    # defaults differently than 2.x) and searchsorted() with a mismatched-unit
+    # Timestamp raises "Cannot losslessly convert units" on some of those versions.
+    entry_dt = datetime.utcfromtimestamp(entry_time)
     # Pad a few candles before entry for context, keep everything after through to now
-    idx_pos = df.index.searchsorted(entry_ts)
+    idx_pos = int((df.index <= entry_dt).sum())
     start = max(0, idx_pos - 10)
     df = df.iloc[start:]
     if len(df) < 3:
