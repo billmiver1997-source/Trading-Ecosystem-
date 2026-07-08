@@ -954,14 +954,13 @@ def handle_message(chat_id, text, username, first_name=""):
 
 def _process_update(update):
     try:
-        # Log every update so we can see what Telegram is sending
-        update_keys = [k for k in update.keys() if k != "update_id"]
         msg = update.get("message", {})
         chat_id = str(msg.get("chat", {}).get("id", ""))
         text = msg.get("text", "")
         username = msg.get("from", {}).get("username", "")
         first_name = msg.get("from", {}).get("first_name", "")
-        print(f"[UPDATE] type={update_keys} chat={chat_id} text={repr(text[:40])}", flush=True)
+        if chat_id:
+            _ensure_keyboard(chat_id)
         if text and chat_id:
             handle_message(chat_id, text, username, first_name)
         callback = update.get("callback_query", {})
@@ -984,6 +983,14 @@ def _process_update(update):
                 handle_message(cb_chat_id, "📋 status", cb_username, cb_first_name)
     except Exception as e:
         print(f"_process_update error: {e}")
+
+_keyboard_sent = set()  # chat_ids that already have the keyboard
+
+def _ensure_keyboard(chat_id):
+    """Send keyboard to a chat if it hasn't received one since the last restart."""
+    if chat_id not in _keyboard_sent:
+        send_message(chat_id, "📋 Menu restored:", main_menu())
+        _keyboard_sent.add(chat_id)
 
 def main():
     set_commands()
