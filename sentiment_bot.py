@@ -136,6 +136,10 @@ def format_message(fg, dxy, gold, vix):
     if vix:
         data += f"VIX (Market Fear): {vix['value']} | {vix['level']}\n"
 
+    if not data:
+        print("Sentiment: all data sources unavailable, skipping AI call")
+        return None
+
     try:
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
         style = random.choice(SENTIMENT_STYLES)
@@ -171,9 +175,11 @@ def main():
                 gold = get_gold_sentiment()
                 vix = get_vix()
                 msg = format_message(fg, dxy, gold, vix)
-                if send_channel(msg):
+                if msg and send_channel(msg):
                     sent_today = today
-                print("Sentiment sent!")
+                    print("Sentiment sent!")
+                elif not msg:
+                    print("Sentiment skipped — no data available")
 
         except Exception as e:
             print("Error: "+str(e))

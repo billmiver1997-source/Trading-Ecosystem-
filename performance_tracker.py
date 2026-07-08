@@ -176,16 +176,24 @@ def get_price(symbol):
     return None
 
 def check_trades():
-    # Exclusive lock prevents race with signal_strategy.py writing to the same file
+    # Pre-fetch prices BEFORE acquiring the lock so yfinance latency doesn't
+    # block signal_strategy.py (which acquires the same lock to write new trades).
+    snapshot = load_trades()
+    price_cache = {}
+    for trade in snapshot:
+        symbol = SYMBOLS.get(trade.get("name", ""))
+        if symbol and symbol not in price_cache:
+            price_cache[symbol] = get_price(symbol)
+
     lock_path = TRADES_FILE + '.lock'
     with open(lock_path, 'a') as _lf:
         fcntl.flock(_lf, fcntl.LOCK_EX)
         try:
-            _check_trades_inner()
+            _check_trades_inner(price_cache)
         finally:
             fcntl.flock(_lf, fcntl.LOCK_UN)
 
-def _check_trades_inner():
+def _check_trades_inner(price_cache):
     trades = load_trades()
     if not trades:
         return
@@ -202,7 +210,7 @@ def _check_trades_inner():
             remaining.append(trade)
             continue
 
-        price = get_price(symbol)
+        price = price_cache.get(symbol)
         if price is None:
             remaining.append(trade)
             continue

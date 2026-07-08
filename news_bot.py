@@ -8,7 +8,7 @@ import time
 import random
 import feedparser
 import anthropic
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
@@ -187,9 +187,15 @@ def main():
                 print("Silence hours - sleeping...")
                 _now = datetime.now(tz)
                 _wake = _now.replace(hour=6, minute=55, second=0, microsecond=0)
-                _secs = max(60, (_wake - _now).total_seconds())
+                if _wake <= _now:
+                    # Already past 06:55 but still hour < 7 (06:55-06:59); add 1 day
+                    _wake += timedelta(days=1)
+                _secs = (_wake - _now).total_seconds()
                 time.sleep(min(_secs, 1800))
                 continue
+
+            # Prune stale keys from previous days to prevent indefinite growth
+            sent_today = {k: v for k, v in sent_today.items() if k.startswith(today)}
 
             # Check schedule
             send_key = today+"_"+str(hour)
@@ -209,8 +215,8 @@ def main():
                                 safe_url = url.replace("&", "&amp;")
                                 links_section += f'• <a href="{safe_url}">{_html.escape(short)}</a>\n'
                             links_str = links_section.rstrip()
-                            # Ensure at least 200 chars for the body; guard against links_str > 824 chars
-                            max_base = max(200, 1024 - len(links_str))
+                            # Clamp base so base+links never exceeds 1024 chars
+                            max_base = max(0, 1024 - len(links_str))
                             msg = base[:max_base] + links_str
                             parse_mode = "HTML"
                         else:

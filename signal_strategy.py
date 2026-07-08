@@ -35,7 +35,7 @@ PAIR_CURRENCIES = {
     "Oil/USD": ["USD"],
 }
 
-RR = 1.5  # TP = entry +/- risk * RR; validated as >= 1:2 across both pairs
+RR = 1.5  # TP = entry +/- risk * RR; produces a 1:1.5 risk-reward ratio
 
 PAIR_EMOJIS = {
     "USD/CAD": "\U0001f1e8\U0001f1e6",
@@ -323,10 +323,9 @@ def main():
                 time.sleep(3600)
                 continue
 
-            now_time = time.time()
-            if now_time - news_cache["time"] > 3600:
-                news_cache["blocked"] = get_news_blocked_currencies()
-                news_cache["time"] = now_time
+            # TTL was 3600s but the loop also sleeps 3600s, so the cache
+            # expired on every single iteration. Call unconditionally instead.
+            news_cache["blocked"] = get_news_blocked_currencies()
 
             open_trades = _load_json("/root/tradingbot/open_trades.json", [])
             open_pairs = set(t["name"] for t in open_trades)
@@ -361,19 +360,21 @@ def main():
                     dedup_key = f"{name}_{signal}"
                     if last_signals.get(dedup_key, {}).get("confirm_bar_time") == setup["confirm_bar_time"]:
                         continue  # already signaled this exact confirmation candle
+
+                    # Signal sending inside the per-pair try/except so an error
+                    # for one pair cannot abort the entire for loop.
+                    msg = format_setup(name, setup)
+                    photo_path = chart.make_signal_chart(
+                        name, symbol, setup["bias"], setup["price"], setup["sl"], setup["tp"]
+                    )
+                    msg_id = send_signal_photo(msg, photo_path)
+                    last_signals[dedup_key] = {"time": time.time(), "confirm_bar_time": setup["confirm_bar_time"]}
+                    _save_json(LAST_SIGNAL_FILE, last_signals)
+                    add_trade(name, setup, signal_message_id=msg_id)
+                    print(f"Signal sent: {name} {setup['bias']} entry:{setup['price']} sl:{setup['sl']} tp:{setup['tp']} msg_id:{msg_id}")
                 except Exception as e:
                     print(f"Error {name}: {e}")
                     continue
-
-                msg = format_setup(name, setup)
-                photo_path = chart.make_signal_chart(
-                    name, symbol, setup["bias"], setup["price"], setup["sl"], setup["tp"]
-                )
-                msg_id = send_signal_photo(msg, photo_path)
-                last_signals[dedup_key] = {"time": time.time(), "confirm_bar_time": setup["confirm_bar_time"]}
-                _save_json(LAST_SIGNAL_FILE, last_signals)
-                add_trade(name, setup, signal_message_id=msg_id)
-                print(f"Signal sent: {name} {setup['bias']} entry:{setup['price']} sl:{setup['sl']} tp:{setup['tp']} msg_id:{msg_id}")
 
         except Exception as e:
             print(f"Main error: {e}")

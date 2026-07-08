@@ -102,11 +102,12 @@ def send_photo(photo_name, caption):
             if photos:
                 _photo_ids[photo_name] = photos[-1]["file_id"]
         elif not fid:
-            requests.post(
+            r = requests.post(
                 "https://api.telegram.org/bot" + TELEGRAM_TOKEN + "/sendMessage",
                 json={"chat_id": SIGNALS_CHANNEL, "text": cap},
                 timeout=10,
             )
+            r.raise_for_status()
             return
         r.raise_for_status()
     except Exception as e:
@@ -147,6 +148,8 @@ def main():
             minute = now.minute
             today = now.strftime("%Y-%m-%d")
             time_str = now.strftime("%H:%M")
+            # Prune stale sent-keys from previous days to prevent indefinite growth
+            sent = {k: v for k, v in sent.items() if k.endswith(today)}
 
             for s in SESSIONS:
                 oh, om = s["open"]
