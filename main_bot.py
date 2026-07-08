@@ -18,17 +18,25 @@ USERS_FILE = "/root/tradingbot/users.json"
 
 def load_users():
     if os.path.exists(USERS_FILE):
-        with open(USERS_FILE) as f:
-            data = json.load(f)
-            # Migration: αν είναι παλιά μορφή (list of strings)
-            if data and isinstance(data[0], str):
-                return {}
-            return {u["id"]: u for u in data} if isinstance(data, list) else data
+        try:
+            with open(USERS_FILE) as f:
+                data = json.load(f)
+                # Migration: αν είναι παλιά μορφή (list of strings)
+                if data and isinstance(data[0], str):
+                    return {}
+                return {u["id"]: u for u in data} if isinstance(data, list) else data
+        except (json.JSONDecodeError, ValueError, OSError) as e:
+            print(f"load_users error: {e}")
     return {}
 
 def save_users(users):
-    with open(USERS_FILE, "w") as f:
-        json.dump(list(users.values()), f, indent=2, ensure_ascii=False)
+    tmp = USERS_FILE + '.tmp'
+    try:
+        with open(tmp, 'w') as f:
+            json.dump(list(users.values()), f, indent=2, ensure_ascii=False)
+        os.replace(tmp, USERS_FILE)
+    except Exception as e:
+        print(f"save_users error: {e}")
 
 def track_user(user, bot_name="main"):
     from datetime import datetime as dt
@@ -144,35 +152,39 @@ def get_market_overview():
             change = ((df["Close"].iloc[-1] - df["Close"].iloc[-24]) / df["Close"].iloc[-24]) * 100
             emoji = "\U0001f7e2" if change > 0 else "\U0001f534"
             result.append(emoji+" "+name+": "+str(round(price,4))+" ("+("{:+.2f}".format(change))+"%)")
-        except:
-            pass
+        except Exception as e:
+            print(f"get_market_overview error {name}: {e}")
     tz = pytz.timezone("Europe/Athens")
     now = datetime.now(tz).strftime("%d/%m/%Y %H:%M")
     result.append("\n\U0001f554 "+now)
     return "\n".join(result)
 
 def get_education(topic):
-    client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    prompts = {
-        "forex": "Explain Forex trading for a beginner. Max 200 words. Use emojis. Plain text only.",
-        "crypto": "Explain cryptocurrency trading for a beginner. Max 200 words. Use emojis. Plain text only.",
-        "cfd": "Explain CFD trading for a beginner. Max 200 words. Use emojis. Plain text only.",
-        "smc": "Explain Smart Money Concepts: Order Blocks, FVG, BOS, CHoCH. Max 200 words. Use emojis. Plain text only.",
-        "risk": "Explain risk management in trading. Max 200 words. Use emojis. Plain text only.",
-        "indicators": "Explain RSI, MACD, EMA, Bollinger Bands. Max 200 words. Use emojis. Plain text only.",
-        "patterns": "Explain chart patterns: Head and Shoulders, Double Top/Bottom, Triangle, Flag. Max 200 words. Use emojis. Plain text only.",
-        "glossary": "Trading glossary: Pip, Lot, Leverage, Spread, Margin, Swap, Liquidity, Volatility, Bull/Bear. Use emojis. Plain text only.",
-        "cryptotrading": "Explain crypto trading: spot vs futures, leverage, exchanges. Max 200 words. Use emojis. Plain text only.",
-        "defi": "Explain DeFi, DEX vs CEX, staking, NFTs. Max 200 words. Use emojis. Plain text only.",
-        "psychology": "Explain trading psychology: FOMO, revenge trading, discipline. Max 200 words. Use emojis. Plain text only.",
-        "howtostart": "Step by step guide to start trading for a complete beginner. Max 200 words. Use emojis. Plain text only.",
-    }
-    message = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=500,
-        messages=[{"role": "user", "content": prompts.get(topic, "")}]
-    )
-    return message.content[0].text
+    try:
+        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        prompts = {
+            "forex": "Explain Forex trading for a beginner. Max 200 words. Use emojis. Plain text only.",
+            "crypto": "Explain cryptocurrency trading for a beginner. Max 200 words. Use emojis. Plain text only.",
+            "cfd": "Explain CFD trading for a beginner. Max 200 words. Use emojis. Plain text only.",
+            "smc": "Explain Smart Money Concepts: Order Blocks, FVG, BOS, CHoCH. Max 200 words. Use emojis. Plain text only.",
+            "risk": "Explain risk management in trading. Max 200 words. Use emojis. Plain text only.",
+            "indicators": "Explain RSI, MACD, EMA, Bollinger Bands. Max 200 words. Use emojis. Plain text only.",
+            "patterns": "Explain chart patterns: Head and Shoulders, Double Top/Bottom, Triangle, Flag. Max 200 words. Use emojis. Plain text only.",
+            "glossary": "Trading glossary: Pip, Lot, Leverage, Spread, Margin, Swap, Liquidity, Volatility, Bull/Bear. Use emojis. Plain text only.",
+            "cryptotrading": "Explain crypto trading: spot vs futures, leverage, exchanges. Max 200 words. Use emojis. Plain text only.",
+            "defi": "Explain DeFi, DEX vs CEX, staking, NFTs. Max 200 words. Use emojis. Plain text only.",
+            "psychology": "Explain trading psychology: FOMO, revenge trading, discipline. Max 200 words. Use emojis. Plain text only.",
+            "howtostart": "Step by step guide to start trading for a complete beginner. Max 200 words. Use emojis. Plain text only.",
+        }
+        message = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=500,
+            messages=[{"role": "user", "content": prompts.get(topic, "")}]
+        )
+        return message.content[0].text
+    except Exception as e:
+        print(f"get_education error ({topic}): {e}")
+        return "Education content temporarily unavailable. Please try again."
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(WELCOME, reply_markup=main_menu())
@@ -182,8 +194,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         username = "@"+user.username if user.username else "no username"
         notify = "\U0001f514 NEW USER on Nova Main Bot!\n\nName: "+name+" | "+username+"\nID: "+str(user.id)
         await context.bot.send_message(chat_id=OWNER_ID, text=notify)
-    except:
-        pass
+    except Exception as e:
+        print(f"start notify error: {e}")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
