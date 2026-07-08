@@ -954,16 +954,16 @@ def handle_message(chat_id, text, username, first_name=""):
 
 def _process_update(update):
     try:
+        # Log every update so we can see what Telegram is sending
+        update_keys = [k for k in update.keys() if k != "update_id"]
         msg = update.get("message", {})
         chat_id = str(msg.get("chat", {}).get("id", ""))
         text = msg.get("text", "")
         username = msg.get("from", {}).get("username", "")
         first_name = msg.get("from", {}).get("first_name", "")
+        print(f"[UPDATE] type={update_keys} chat={chat_id} text={repr(text[:40])}", flush=True)
         if text and chat_id:
-            print(f"[MSG] chat={chat_id} text={repr(text[:60])}", flush=True)
             handle_message(chat_id, text, username, first_name)
-        elif not text and msg:
-            print(f"[MSG] chat={chat_id} no-text update_type={list(msg.keys())}", flush=True)
         callback = update.get("callback_query", {})
         if callback:
             cb_chat_id = str(callback.get("message", {}).get("chat", {}).get("id", ""))
