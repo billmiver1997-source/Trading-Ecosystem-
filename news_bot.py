@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 load_dotenv("/root/tradingbot/.env")
 
 import html as _html
+import json
 import requests
 import time
 import random
@@ -15,7 +16,34 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
 CHANNEL_ID = os.getenv("TELEGRAM_NEWS_CHANNEL")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 IMAGES_DIR = "/root/tradingbot/images"
+CURSORS_FILE = "/root/tradingbot/cursors_news.json"
+NEWS_IMAGES = ["news.jpg", "news_2.jpg", "news_3.jpg", "news_4.jpg"]
 _photo_ids = {}
+_img_cursors = {}
+
+def _load_cursors():
+    global _img_cursors
+    try:
+        if os.path.exists(CURSORS_FILE):
+            with open(CURSORS_FILE) as f:
+                _img_cursors = json.load(f)
+    except Exception as e:
+        print(f"load cursors error: {e}")
+
+def _save_cursors():
+    try:
+        tmp = CURSORS_FILE + '.tmp'
+        with open(tmp, 'w') as f:
+            json.dump(_img_cursors, f)
+        os.replace(tmp, CURSORS_FILE)
+    except Exception as e:
+        print(f"save cursors error: {e}")
+
+def _next_photo(category, pool):
+    idx = _img_cursors.get(category, 0)
+    _img_cursors[category] = (idx + 1) % len(pool)
+    _save_cursors()
+    return pool[idx]
 
 def send_photo_channel(photo_name, caption="", parse_mode=None):
     path = os.path.join(IMAGES_DIR, photo_name)
@@ -172,6 +200,7 @@ def send_channel(msg, parse_mode=None):
 
 def main():
     print("News bot started...")
+    _load_cursors()
     sent_today = {}
 
     while True:
@@ -222,7 +251,7 @@ def main():
                         else:
                             msg = header+"\n🕔 "+now_str+"\n\n"+report
                             parse_mode = None
-                        send_photo_channel("news.jpg", caption=msg, parse_mode=parse_mode)
+                        send_photo_channel(_next_photo("news", NEWS_IMAGES), caption=msg, parse_mode=parse_mode)
                         print(f"Sent {hour}:00 update!")
                 sent_today[send_key] = True  # mark attempted regardless to prevent duplicate sends
                 time.sleep(600)

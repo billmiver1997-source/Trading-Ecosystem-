@@ -8,6 +8,9 @@ os.makedirs(IMAGES_DIR, exist_ok=True)
 IMAGES = {
     # Channel / editorial
     "news.jpg":       "https://images.unsplash.com/photo-1504711434969-e33886168f5c?w=1200&q=85&auto=format&fit=crop",
+    "news_2.jpg":     "https://images.unsplash.com/photo-1495020689067-958852a7765e?w=1200&q=85&auto=format&fit=crop",
+    "news_3.jpg":     "https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=1200&q=85&auto=format&fit=crop",
+    "news_4.jpg":     "https://images.unsplash.com/photo-1495521821757-a1efb6729352?w=1200&q=85&auto=format&fit=crop",
     "sentiment.jpg":  "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=1200&q=85&auto=format&fit=crop",
     "tips.jpg":       "https://images.unsplash.com/photo-1434626881859-194d67b2b86f?w=1200&q=85&auto=format&fit=crop",
     "psychology.jpg": "https://images.unsplash.com/photo-1489659831163-682b5af42225?w=1200&q=85&auto=format&fit=crop",
