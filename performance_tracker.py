@@ -10,6 +10,8 @@ import time
 from datetime import datetime
 import pytz
 
+import chart
+
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
 if not TELEGRAM_TOKEN:
     raise RuntimeError("TELEGRAM_TOKEN_SIGNAL is not set in environment")
@@ -21,39 +23,13 @@ TRADES_FILE = "/root/tradingbot/open_trades.json"
 STATS_FILE = "/root/tradingbot/trade_stats.json"
 
 SYMBOLS = {
-    "USD/CHF": "USDCHF=X",
-    "AUD/USD": "AUDUSD=X",
-    "EUR/USD": "EURUSD=X",
-    "EUR/CHF": "EURCHF=X",
-    "GBP/USD": "GBPUSD=X",
     "USD/CAD": "USDCAD=X",
-    "NZD/USD": "NZDUSD=X",
-    "XAU/USD": "GC=F",
-    "Silver/USD": "SI=F",
-    "Copper/USD": "HG=F",
     "Oil/USD": "CL=F",
-    "BTC/USD": "BTC-USD",
-    "SOL/USD": "SOL-USD",
-    "DXY": "DX-Y.NYB",
-    "USD/JPY": "USDJPY=X",
 }
 
 PAIR_EMOJIS = {
-    "USD/CHF": "\U0001f1fa\U0001f1f8",
-    "AUD/USD": "\U0001f1e6\U0001f1fa",
-    "EUR/USD": "\U0001f1ea\U0001f1fa",
-    "EUR/CHF": "\U0001f1e8\U0001f1ed",
-    "GBP/USD": "\U0001f1ec\U0001f1e7",
     "USD/CAD": "\U0001f1e8\U0001f1e6",
-    "NZD/USD": "\U0001f1f3\U0001f1ff",
-    "XAU/USD": "\U0001fa99",
-    "Silver/USD": "\U0001f948",
-    "Copper/USD": "\U0001f7e0",
     "Oil/USD": "\U0001f6e2",
-    "BTC/USD": "\U0001f7e1",
-    "SOL/USD": "\U0001f535",
-    "DXY": "\U0001f4b5",
-    "USD/JPY": "\U0001f1ef\U0001f1f5",
 }
 
 def load_users():
@@ -136,39 +112,6 @@ def send_all(msg):
         except Exception as e:
             print(f"send_all error {chat_id}: {e}")
 
-IMAGES_DIR = "/root/tradingbot/images"
-CURSORS_FILE = "/root/tradingbot/cursors_tracker.json"
-_photo_ids = {}
-_img_cursors = {}
-
-WIN_IMAGES  = ["win.jpg",  "win_2.jpg",  "win_3.jpg",  "win_4.jpg"]
-LOSS_IMAGES = ["loss.jpg", "loss_2.jpg", "loss_3.jpg", "loss_4.jpg"]
-BE_IMAGES   = ["be.jpg",   "be_2.jpg",   "be_3.jpg"]
-
-def _load_cursors():
-    global _img_cursors
-    try:
-        if os.path.exists(CURSORS_FILE):
-            with open(CURSORS_FILE) as f:
-                _img_cursors = json.load(f)
-    except Exception as e:
-        print(f"load cursors error: {e}")
-
-def _save_cursors():
-    try:
-        tmp = CURSORS_FILE + '.tmp'
-        with open(tmp, 'w') as f:
-            json.dump(_img_cursors, f)
-        os.replace(tmp, CURSORS_FILE)
-    except Exception as e:
-        print(f"save cursors error: {e}")
-
-def _next_photo(category, pool):
-    idx = _img_cursors.get(category, 0)
-    _img_cursors[category] = (idx + 1) % len(pool)
-    _save_cursors()
-    return pool[idx]
-
 def send_channel_reply(msg, reply_to_message_id=None):
     """Send result to signals channel, replying to the original signal message."""
     if not SIGNALS_CHANNEL or not TELEGRAM_TOKEN:
@@ -187,46 +130,40 @@ def send_channel_reply(msg, reply_to_message_id=None):
     except Exception as e:
         print(f"send_channel_reply error: {e}")
 
-def send_result_photo(photo_name, caption, reply_to_message_id=None):
-    """Send a result photo to the signals channel, optionally as a reply."""
+def send_result_photo(photo_path, caption, reply_to_message_id=None):
+    """Send a generated result chart to the signals channel, optionally as a reply.
+    Deletes the chart file after sending (each one is unique, nothing to cache)."""
     if not SIGNALS_CHANNEL or not TELEGRAM_TOKEN:
         return
-    path = os.path.join(IMAGES_DIR, photo_name)
     cap = caption[:1024]
     try:
-        fid = _photo_ids.get(photo_name)
-        if fid:
-            payload = {"chat_id": SIGNALS_CHANNEL, "photo": fid, "caption": cap}
-            if reply_to_message_id:
-                payload["reply_to_message_id"] = reply_to_message_id
-            r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
-                json=payload, timeout=15)
-            if not r.ok:
-                # Stale file_id — evict cache and fall through to re-upload
-                _photo_ids.pop(photo_name, None)
-                fid = None
-        if not fid and os.path.exists(path):
-            data = {"chat_id": SIGNALS_CHANNEL, "caption": cap}
-            if reply_to_message_id:
-                data["reply_to_message_id"] = str(reply_to_message_id)
-            with open(path, "rb") as pf:
-                r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
-                    files={"photo": ("image.jpg", pf, "image/jpeg")},
-                    data=data, timeout=15)
-            photos = r.json().get("result", {}).get("photo", [])
-            if photos:
-                _photo_ids[photo_name] = photos[-1]["file_id"]
-        elif not fid:
+        if not photo_path or not os.path.exists(photo_path):
             send_channel_reply(cap, reply_to_message_id)
             return
+        data = {"chat_id": SIGNALS_CHANNEL, "caption": cap}
+        if reply_to_message_id:
+            data["reply_to_message_id"] = str(reply_to_message_id)
+        with open(photo_path, "rb") as pf:
+            r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
+                files={"photo": ("chart.png", pf, "image/png")},
+                data=data, timeout=20)
         if not r.ok and reply_to_message_id:
             # Retry without reply if the original was deleted
-            send_result_photo(photo_name, caption)
-            return
+            data.pop("reply_to_message_id", None)
+            with open(photo_path, "rb") as pf:
+                r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
+                    files={"photo": ("chart.png", pf, "image/png")},
+                    data=data, timeout=20)
         r.raise_for_status()
     except Exception as e:
         print(f"send_result_photo error: {e}")
         send_channel_reply(cap, reply_to_message_id)
+    finally:
+        if photo_path and os.path.exists(photo_path):
+            try:
+                os.remove(photo_path)
+            except OSError:
+                pass
 
 def get_price(symbol):
     try:
@@ -281,8 +218,7 @@ def _check_trades_inner():
         sl_hit = (signal == "BUY" and price <= sl) or (signal == "SELL" and price >= sl)
 
         # Trailing SL: move to breakeven when price covers 50% to TP
-        atr = trade.get("atr", 0)
-        if atr and not tp_hit and not sl_hit:
+        if not tp_hit and not sl_hit:
             half_move = abs(tp - entry) * 0.5
             sig_msg_id = trade.get("signal_message_id")
             # Use 1e-6 epsilon: round(entry,5) < entry by float precision, causing infinite loop
@@ -297,7 +233,8 @@ def _check_trades_inner():
                     f"Entry: {round(entry,5)}  ➡️  Current: {round(price,5)}\n"
                     f"SL moved to entry — risk = 0 ✅"
                 )
-                send_result_photo(_next_photo("be", BE_IMAGES), be_msg, sig_msg_id)
+                photo_path = chart.make_result_chart(name, symbol, signal, entry, trade["sl"], tp, trade.get("time", time.time()), "BE")
+                send_result_photo(photo_path, be_msg, sig_msg_id)
             elif signal == "SELL" and price <= entry - half_move and sl > entry + 1e-6:
                 trade["sl"] = round(entry, 5)
                 open_mins = int((time.time() - trade.get("time", time.time())) / 60)
@@ -309,7 +246,8 @@ def _check_trades_inner():
                     f"Entry: {round(entry,5)}  ➡️  Current: {round(price,5)}\n"
                     f"SL moved to entry — risk = 0 ✅"
                 )
-                send_result_photo(_next_photo("be", BE_IMAGES), be_msg, sig_msg_id)
+                photo_path = chart.make_result_chart(name, symbol, signal, entry, trade["sl"], tp, trade.get("time", time.time()), "BE")
+                send_result_photo(photo_path, be_msg, sig_msg_id)
 
         if tp_hit:
             closed.append((trade, "WIN", abs(tp - entry), now))
@@ -333,12 +271,14 @@ def _check_trades_inner():
     # Now update stats, send notifications, and write journal for each closed trade
     for trade, result, pips, now in closed:
         name = trade["name"]
+        symbol = SYMBOLS.get(name)
         signal = trade["signal"]
         entry = trade["entry"]
         sl = trade["sl"]
         tp = trade["tp"]
         emoji = PAIR_EMOJIS.get(name, "")
         sig_msg_id = trade.get("signal_message_id")
+        entry_time = trade.get("time", time.time())
 
         pair_s = stats["by_pair"].setdefault(name, {"wins": 0, "losses": 0})
 
@@ -362,7 +302,8 @@ def _check_trades_inner():
                 "Profit: +" + str(pips_display) + " " + pips_unit + " \U0001f7e2\n\n"
                 "\U0001f4ca " + str(stats["wins"]) + "W / " + str(stats["losses"]) + "L | WR: " + str(winrate) + "%"
             )
-            send_result_photo(_next_photo("win", WIN_IMAGES), msg, sig_msg_id)
+            photo_path = chart.make_result_chart(name, symbol, signal, entry, sl, tp, entry_time, "WIN")
+            send_result_photo(photo_path, msg, sig_msg_id)
             print("TP hit: " + name)
             _append_journal({"pair":name,"side":signal,"result":"WIN","pips":"+"+str(round(pips,4)),"note":"Auto - TP Hit","date":now})
 
@@ -374,7 +315,8 @@ def _check_trades_inner():
                 + signal + ": Entry " + str(round(entry, 5)) + "\n"
                 "SL hit at entry — capital protected"
             )
-            send_result_photo(_next_photo("be", BE_IMAGES), msg, sig_msg_id)
+            photo_path = chart.make_result_chart(name, symbol, signal, entry, sl, tp, entry_time, "BE")
+            send_result_photo(photo_path, msg, sig_msg_id)
             print("BE closed: " + name)
             _append_journal({"pair":name,"side":signal,"result":"BE","pips":"0","note":"Auto - Breakeven","date":now})
 
@@ -395,7 +337,8 @@ def _check_trades_inner():
                 "Loss: -" + str(pips_display) + " " + pips_unit + " \U0001f534\n\n"
                 "\U0001f4ca " + str(stats["wins"]) + "W / " + str(stats["losses"]) + "L | WR: " + str(winrate) + "%"
             )
-            send_result_photo(_next_photo("loss", LOSS_IMAGES), msg, sig_msg_id)
+            photo_path = chart.make_result_chart(name, symbol, signal, entry, sl, tp, entry_time, "LOSS")
+            send_result_photo(photo_path, msg, sig_msg_id)
             print("SL hit: " + name)
             _append_journal({"pair":name,"side":signal,"result":"LOSS","pips":"-"+str(round(pips,4)),"note":"Auto - SL Hit","date":now})
 
@@ -421,7 +364,6 @@ def send_daily_stats():
 
 def main():
     print("Performance tracker started...")
-    _load_cursors()
     last_stats_day = ""
     while True:
         try:
