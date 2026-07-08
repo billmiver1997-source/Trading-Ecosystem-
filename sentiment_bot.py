@@ -130,9 +130,9 @@ def format_message(fg, dxy, gold, vix):
         bar = "█" * (fg["value"] // 10) + "░" * (10 - fg["value"] // 10)
         data += f"Crypto Fear & Greed: {fg['value']}/100 - {fg['classification']} [{bar}]\n"
     if dxy:
-        data += f"DXY (US Dollar): {dxy['value']} | {dxy['change']}% 25h | {dxy['sentiment']}\n"
+        data += f"DXY (US Dollar): {dxy['value']} | {dxy['change']}% 24h | {dxy['sentiment']}\n"
     if gold:
-        data += f"Gold: ${gold['value']} | {gold['change']}% 25h | {gold['sentiment']}\n"
+        data += f"Gold: ${gold['value']} | {gold['change']}% 24h | {gold['sentiment']}\n"
     if vix:
         data += f"VIX (Market Fear): {vix['value']} | {vix['level']}\n"
 

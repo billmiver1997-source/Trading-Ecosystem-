@@ -137,7 +137,7 @@ def backtest_pair(name, symbol):
             fib_bear_618 = slo + fib_range * 0.618
             if (fib_bear_50 - fib_tol) <= p <= (fib_bear_618 + fib_tol): se += 1
 
-        # Threshold: 5/7 (more conservative than live bot's 4/9 — OB/FVG excluded, not backtest-safe)
+        # Threshold: 5/7 (more conservative than live bot's 6/9 — OB/FVG excluded, not backtest-safe)
         if sb >= 5 and trend_4h == "BULL":
             sl2 = p - a*1.5; tp = p + a*3
             resolved = False
