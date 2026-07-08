@@ -183,7 +183,7 @@ def main():
             today = now.strftime("%Y-%m-%d")
 
             # Silence 00:00 - 06:59; sleep until 06:55 to avoid missing the 07:00 window
-            if hour == 0 or 1 <= hour < 7:
+            if hour < 7:
                 print("Silence hours - sleeping...")
                 _now = datetime.now(tz)
                 _wake = _now.replace(hour=6, minute=55, second=0, microsecond=0)

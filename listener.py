@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 load_dotenv("/root/tradingbot/.env")
 
 import fcntl
+import random
 import requests
 import json
 import time
@@ -242,7 +243,6 @@ def _fetch_analysis(pair_name):
         macd_sig = macd_line.ewm(span=9).mean().iloc[-1]
         atr_pct = round((atr / price) * 100, 3)
 
-        import random
         client = _get_anthropic()
         system_prompt = "You are a professional forex and commodities analyst. Respond in plain text only — no markdown, no asterisks. Always include a specific numeric ENTRY, SL, and TP. Use emojis sparingly."
         analysis_styles = [
@@ -441,7 +441,6 @@ def handle_message(chat_id, text, username, first_name=""):
         send_typing(chat_id)
         try:
             import feedparser
-            import random as _rnd
             tz = pytz.timezone("Europe/Athens")
             now_str = datetime.now(tz).strftime("%d/%m/%Y %H:%M")
             keywords = ["war","attack","fed","rate","inflation","trump","tariff","oil","gold","dollar","ukraine","iran","china","russia","market","crash","rally","ceasefire","ecb","boe","sanctions"]
@@ -467,7 +466,7 @@ def handle_message(chat_id, text, username, first_name=""):
                 "You are a trading desk analyst sharing breaking news with your team. Plain text. Highlight the top stories, flag any high-impact events, and add your read on what to watch. 4-6 lines. Emojis.",
                 "You are a market intelligence analyst. Plain text only. From these headlines, identify the dominant theme (geopolitical risk / central bank moves / commodity pressure / etc.) and explain the top 3-4 stories that support it. Be sharp and direct. Emojis.",
             ]
-            style = _rnd.choice(news_styles)
+            style = random.choice(news_styles)
             headers = ["📰 LATEST NEWS", "📡 MARKET INTELLIGENCE", "🗞 BREAKING MARKET NEWS", "📊 MARKET UPDATE"]
             message = client.messages.create(
                 model="claude-haiku-4-5-20251001",
@@ -475,7 +474,7 @@ def handle_message(chat_id, text, username, first_name=""):
                 system=style,
                 messages=[{"role":"user","content":"Headlines:\n\n"+news_text}]
             )
-            send_message(chat_id, _rnd.choice(headers)+"\n🕔 "+now_str+"\n\n"+message.content[0].text+"\n\n📰 Full coverage: @tradingNovaNews", main_menu())
+            send_message(chat_id, random.choice(headers)+"\n🕔 "+now_str+"\n\n"+message.content[0].text+"\n\n📰 Full coverage: @tradingNovaNews", main_menu())
         except Exception as e:
             print(f"News handler error: {e}")
             send_message(chat_id, "🌍 Latest news at @tradingNovaNews", main_menu())

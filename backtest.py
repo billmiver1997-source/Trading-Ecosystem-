@@ -75,7 +75,9 @@ def backtest_pair(name, symbol):
     if len(df) < 261:
         return None
 
-    trend_4h = get_trend_4h(symbol)
+    # Do NOT call get_trend_4h() here — it returns today's trend and applying it
+    # to every historical bar is look-ahead bias. Instead derive trend from the
+    # already-computed 1H EMAs at each bar inside the loop.
 
     close = df["Close"]; high = df["High"]; low = df["Low"]; open_ = df["Open"]
     ema20 = close.ewm(span=20).mean()
@@ -102,11 +104,14 @@ def backtest_pair(name, symbol):
 
     for i in range(200, len(df)-60):
         p = close.iloc[i]; a = atr.iloc[i]
+        # Trend at bar i derived from data available at that time — no look-ahead bias
+        local_bull = ema20.iloc[i] > ema50.iloc[i]
+        local_bear = ema20.iloc[i] < ema50.iloc[i]
         sb = se = 0
 
         # 1. EMA alignment
-        if ema20.iloc[i] > ema50.iloc[i] and p > ema200.iloc[i]: sb += 1
-        if ema20.iloc[i] < ema50.iloc[i] and p < ema200.iloc[i]: se += 1
+        if local_bull and p > ema200.iloc[i]: sb += 1
+        if local_bear and p < ema200.iloc[i]: se += 1
         # 2. MACD momentum
         if macd.iloc[i] > signal_line.iloc[i] and hist.iloc[i] > hist.iloc[i-1]: sb += 1
         if macd.iloc[i] < signal_line.iloc[i] and hist.iloc[i] < hist.iloc[i-1]: se += 1
@@ -138,7 +143,7 @@ def backtest_pair(name, symbol):
             if (fib_bear_50 - fib_tol) <= p <= (fib_bear_618 + fib_tol): se += 1
 
         # Threshold: 5/7 (more conservative than live bot's 6/9 — OB/FVG excluded, not backtest-safe)
-        if sb >= 5 and trend_4h == "BULL":
+        if sb >= 5 and local_bull:
             sl2 = p - a*1.5; tp = p + a*3
             resolved = False
             for j in range(i+1, min(i+61, len(df))):
@@ -151,7 +156,7 @@ def backtest_pair(name, symbol):
             if not resolved:
                 timeouts += 1
 
-        elif se >= 5 and trend_4h == "BEAR":
+        elif se >= 5 and local_bear:
             sl2 = p + a*1.5; tp = p - a*3
             resolved = False
             for j in range(i+1, min(i+61, len(df))):
@@ -165,7 +170,9 @@ def backtest_pair(name, symbol):
                 timeouts += 1
 
     total = wins + losses + timeouts + ambiguous
-    winrate = round(wins/total*100, 1) if total > 0 else 0
+    # Winrate excludes ambiguous and timeout trades — only count decided outcomes
+    decided = wins + losses
+    winrate = round(wins/decided*100, 1) if decided > 0 else 0
     return {"name": name, "wins": wins, "losses": losses, "timeouts": timeouts, "ambiguous": ambiguous, "winrate": winrate, "pips": round(total_pips, 4), "signals": total}
 
 def run_backtest():
@@ -224,9 +231,11 @@ def main():
             now = datetime.now(tz)
             week = now.strftime("%Y-%W")
             if now.weekday() == 6 and now.hour == 20 and now.minute < 10 and sent_this_week != week:
+                # Mark done BEFORE running so a partial failure inside run_backtest()
+                # doesn't cause a second run (and duplicate send) on the next loop tick.
+                sent_this_week = week
                 print("Running backtest...")
                 run_backtest()
-                sent_this_week = week
         except Exception as e:
             print("Error: "+str(e))
         time.sleep(300)
