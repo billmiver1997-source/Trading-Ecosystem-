@@ -960,7 +960,10 @@ def _process_update(update):
         username = msg.get("from", {}).get("username", "")
         first_name = msg.get("from", {}).get("first_name", "")
         if text and chat_id:
+            print(f"[MSG] chat={chat_id} text={repr(text[:60])}", flush=True)
             handle_message(chat_id, text, username, first_name)
+        elif not text and msg:
+            print(f"[MSG] chat={chat_id} no-text update_type={list(msg.keys())}", flush=True)
         callback = update.get("callback_query", {})
         if callback:
             cb_chat_id = str(callback.get("message", {}).get("chat", {}).get("id", ""))
