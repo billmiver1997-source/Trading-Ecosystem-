@@ -4,6 +4,7 @@ load_dotenv("/root/tradingbot/.env")
 
 import html as _html
 import json
+import re
 import requests
 import time
 import random
@@ -138,15 +139,71 @@ def get_greece_time():
     tz = pytz.timezone("Europe/Athens")
     return datetime.now(tz).strftime("%d/%m/%Y %H:%M")
 
+# Minimum acceptable quality for a photo sent to the channel: HD (1280x720).
+# RSS feeds usually advertise several renditions of the same picture plus small
+# thumbnails, so we pick the largest and, where the URL carries a size token,
+# bump it up so the delivered image is at least HD.
+MIN_HD_WIDTH = 1280
+MIN_HD_HEIGHT = 720
+
+def _media_dims(m):
+    """Return (width, height) advertised for a media item, 0 when unknown."""
+    def _to_int(v):
+        try:
+            return int(str(v).strip())
+        except (TypeError, ValueError):
+            return 0
+    return _to_int(m.get("width")), _to_int(m.get("height"))
+
+def _upgrade_image_url(url):
+    """Rewrite common thumbnail URL patterns to a full-resolution variant so the
+    delivered picture is at least HD even when the feed only links a small one.
+    Rewrites are conservative; if a rewritten URL fails, send_photo_channel falls
+    back to the generic pool, so a bad guess degrades gracefully."""
+    if not url:
+        return url
+    # Explicit width in a query param (?width=240, ?w=320, &imwidth=200 ...):
+    # never shrink an already-large image, only raise small ones to HD width.
+    def _raise_width(match):
+        try:
+            current = int(match.group(2))
+        except ValueError:
+            return match.group(0)
+        return match.group(0) if current >= MIN_HD_WIDTH else f"{match.group(1)}{MIN_HD_WIDTH}"
+    url = re.sub(r"([?&](?:width|w|imwidth)=)(\d+)", _raise_width, url, flags=re.IGNORECASE)
+    # BBC ichef path size segment: /news/240/... -> /news/1920/...
+    url = re.sub(r"(/news/)(\d{2,3})(/)", r"\g<1>1920\g<3>", url)
+    return url
+
 def _entry_image(entry):
     """Pull the actual article image out of the RSS entry, if the source
     provides one (media:content / media:thumbnail) — so the photo sent with a
-    story is a real picture of that story, not a generic stock photo."""
+    story is a real picture of that story, not a generic stock photo. Prefer the
+    highest-resolution rendition (at least HD when the feed lets us)."""
+    candidates = []  # (area, has_dims, url)
     for key in ("media_content", "media_thumbnail"):
         media = entry.get(key)
-        if media and isinstance(media, list) and media[0].get("url"):
-            return media[0]["url"]
-    return None
+        if not (media and isinstance(media, list)):
+            continue
+        for m in media:
+            if not isinstance(m, dict):
+                continue
+            url = m.get("url")
+            if not url:
+                continue
+            w, h = _media_dims(m)
+            candidates.append((w * h, bool(w and h), url))
+    if not candidates:
+        return None
+    # Largest advertised picture first; entries with real dimensions win ties.
+    best_area, best_has_dims, best_url = max(candidates, key=lambda c: (c[0], c[1]))
+    upgraded = _upgrade_image_url(best_url)
+    # If we know the best rendition is smaller than HD and no size token let us
+    # bump it, skip it so we fall back to the (HD) generic stock pool instead of
+    # sending a low-resolution picture.
+    if best_has_dims and best_area < MIN_HD_WIDTH * MIN_HD_HEIGHT and upgraded == best_url:
+        return None
+    return upgraded
 
 def collect_news():
     headlines = []    # list of (title, url, image)
