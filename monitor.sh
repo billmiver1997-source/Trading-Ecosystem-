@@ -9,6 +9,7 @@ SERVICES=(
     "nova_news_bot"
     "nova_calendar_bot"
     "nova_sentiment_bot"
+    "nova_backtest"
     "nova_earnings_bot"
     "nova_session_alerts"
     "nova_updates_bot"
