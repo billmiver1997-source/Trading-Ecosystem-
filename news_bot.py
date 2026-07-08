@@ -46,8 +46,26 @@ def _next_photo(category, pool):
     return pool[idx]
 
 def send_photo_channel(photo_name, caption="", parse_mode=None):
-    path = os.path.join(IMAGES_DIR, photo_name)
+    """photo_name is either a filename in IMAGES_DIR (generic rotating stock photo)
+    or a full http(s) URL — Telegram's sendPhoto accepts a remote URL directly, so
+    an actual article image needs no download/upload. Falls back to the generic
+    pool if Telegram can't fetch the URL (e.g. the source blocks hotlinking)."""
     cap = caption[:1024]
+    if isinstance(photo_name, str) and photo_name.startswith("http"):
+        try:
+            payload = {"chat_id": CHANNEL_ID, "photo": photo_name, "caption": cap, "disable_web_page_preview": True}
+            if parse_mode:
+                payload["parse_mode"] = parse_mode
+            r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
+                json=payload, timeout=15)
+            if r.ok:
+                return
+            print(f"send_photo_channel: article image URL rejected ({r.status_code}), falling back")
+        except Exception as e:
+            print(f"send_photo_channel article image error: {e}")
+        photo_name = _next_photo("news", NEWS_IMAGES)
+
+    path = os.path.join(IMAGES_DIR, photo_name)
     try:
         fid = _photo_ids.get(photo_name)
         if fid:
@@ -120,20 +138,31 @@ def get_greece_time():
     tz = pytz.timezone("Europe/Athens")
     return datetime.now(tz).strftime("%d/%m/%Y %H:%M")
 
+def _entry_image(entry):
+    """Pull the actual article image out of the RSS entry, if the source
+    provides one (media:content / media:thumbnail) — so the photo sent with a
+    story is a real picture of that story, not a generic stock photo."""
+    for key in ("media_content", "media_thumbnail"):
+        media = entry.get(key)
+        if media and isinstance(media, list) and media[0].get("url"):
+            return media[0]["url"]
+    return None
+
 def collect_news():
-    headlines = []    # list of (title, url)
-    high_impact = []  # list of (title, url)
+    headlines = []    # list of (title, url, image)
+    high_impact = []  # list of (title, url, image)
     for feed_url in FEEDS:
         try:
             feed = feedparser.parse(feed_url)
             for entry in feed.entries[:20]:
                 title = entry.get("title","")
                 url = entry.get("link","")
+                image = _entry_image(entry)
                 title_lower = title.lower()
                 if any(k in title_lower for k in HIGH_IMPACT):
-                    high_impact.append((title, url))
+                    high_impact.append((title, url, image))
                 elif any(k in title_lower for k in KEYWORDS):
-                    headlines.append((title, url))
+                    headlines.append((title, url, image))
         except Exception as e:
             print(f"collect_news feed error {feed_url}: {e}")
     # high-impact first, deduplicate by title
@@ -171,8 +200,8 @@ REPORT_STYLES = [
 def create_report(items):
     if not items:
         return None, []
-    titles = [t for t, u in items]
-    top_links = [(t, u) for t, u in items[:6] if u][:4]
+    titles = [t for t, u, img in items]
+    top_links = [(t, u) for t, u, img in items[:6] if u][:4]
     try:
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
         style = random.choice(REPORT_STYLES)
@@ -251,7 +280,11 @@ def main():
                         else:
                             msg = header+"\n🕔 "+now_str+"\n\n"+report
                             parse_mode = None
-                        send_photo_channel(_next_photo("news", NEWS_IMAGES), caption=msg, parse_mode=parse_mode)
+                        # Prefer a real image from one of the actual stories (already
+                        # priority-ordered: high-impact first) over the generic pool.
+                        article_image = next((img for _, _, img in items if img), None)
+                        photo = article_image or _next_photo("news", NEWS_IMAGES)
+                        send_photo_channel(photo, caption=msg, parse_mode=parse_mode)
                         print(f"Sent {hour}:00 update!")
                 sent_today[send_key] = True  # mark attempted regardless to prevent duplicate sends
                 time.sleep(600)
