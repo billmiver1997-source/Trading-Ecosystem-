@@ -1,3 +1,6 @@
+# NOT deployed by any systemd service — no ExecStart references this file.
+# The live Main VA Bot runs main_bot.py (was previously an untracked copy at
+# /opt/tradingbot/bot.py). Kept here for reference only.
 import os
 from dotenv import load_dotenv
 load_dotenv("/root/tradingbot/.env")
