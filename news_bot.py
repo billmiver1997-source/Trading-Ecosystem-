@@ -4,6 +4,7 @@ load_dotenv("/root/tradingbot/.env")
 
 import html as _html
 import json
+import re
 import requests
 import time
 import random
@@ -138,14 +139,39 @@ def get_greece_time():
     tz = pytz.timezone("Europe/Athens")
     return datetime.now(tz).strftime("%d/%m/%Y %H:%M")
 
+MIN_IMAGE_WIDTH = 1280  # skip anything smaller than this — not "full HD"
+
+def _upgrade_to_hd(url):
+    """Some CDNs embed the requested width in the URL path and will happily
+    serve a much larger version on request. BBC's ichef always ships a 240px
+    thumbnail in the feed even though the same path supports 1920px — verified
+    by fetching both and comparing actual decoded pixel size."""
+    m = re.search(r"(ichef\.bbci\.co\.uk/ace/standard/)\d+(/)", url)
+    if m:
+        return re.sub(r"(ichef\.bbci\.co\.uk/ace/standard/)\d+(/)", r"\g<1>1920\g<2>", url)
+    return url
+
 def _entry_image(entry):
-    """Pull the actual article image out of the RSS entry, if the source
-    provides one (media:content / media:thumbnail) — so the photo sent with a
-    story is a real picture of that story, not a generic stock photo."""
+    """Pull a full-HD article image out of the RSS entry, if the source provides
+    one (media:content / media:thumbnail) — so the photo sent with a story is a
+    real, current picture of that story, not a generic stock photo. Thumbnails
+    below MIN_IMAGE_WIDTH are skipped unless they come from a CDN we know we
+    can force to a larger size."""
     for key in ("media_content", "media_thumbnail"):
         media = entry.get(key)
-        if media and isinstance(media, list) and media[0].get("url"):
-            return media[0]["url"]
+        if not media or not isinstance(media, list) or not media[0].get("url"):
+            continue
+        url = media[0]["url"]
+        upgraded = _upgrade_to_hd(url)
+        if upgraded != url:
+            return upgraded
+        width = media[0].get("width")
+        try:
+            if width is not None and int(width) < MIN_IMAGE_WIDTH:
+                continue  # too small to pass as a full-HD headline image
+        except (TypeError, ValueError):
+            pass
+        return url
     return None
 
 def collect_news():
