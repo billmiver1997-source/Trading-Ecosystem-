@@ -14,6 +14,7 @@ SERVICES=(
     "nova_session_alerts"
     "nova_updates_bot"
     "nova_newsbot"
+    "nova_volatility_alert"
 )
 
 for service in "${SERVICES[@]}"; do
