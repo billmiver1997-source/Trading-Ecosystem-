@@ -18,6 +18,7 @@ SERVICES=(
     "nova_correlation_bot"
     "nova_watchlist_scanner"
     "nova_weekly_digest"
+    "nova_calendar_alerts"
 )
 
 for service in "${SERVICES[@]}"; do
