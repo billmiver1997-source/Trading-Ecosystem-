@@ -313,7 +313,8 @@ def _check_trades_inner(price_cache):
             photo_path = chart.make_result_chart(name, symbol, signal, entry, sl, tp, entry_time, "WIN")
             send_result_photo(photo_path, msg, sig_msg_id)
             print("TP hit: " + name)
-            _append_journal({"pair":name,"side":signal,"result":"WIN","pips":"+"+str(round(pips,4)),"note":"Auto - TP Hit","date":now})
+            _append_journal({"pair":name,"side":signal,"result":"WIN","pips":"+"+str(round(pips,4)),"note":"Auto - TP Hit","date":now,
+                              "symbol":symbol,"entry":entry,"sl":sl,"tp":tp,"entry_time":entry_time,"close_time":time.time()})
 
         elif result == "BE":
             msg = (
@@ -326,7 +327,8 @@ def _check_trades_inner(price_cache):
             photo_path = chart.make_result_chart(name, symbol, signal, entry, sl, tp, entry_time, "BE")
             send_result_photo(photo_path, msg, sig_msg_id)
             print("BE closed: " + name)
-            _append_journal({"pair":name,"side":signal,"result":"BE","pips":"0","note":"Auto - Breakeven","date":now})
+            _append_journal({"pair":name,"side":signal,"result":"BE","pips":"0","note":"Auto - Breakeven","date":now,
+                              "symbol":symbol,"entry":entry,"sl":sl,"tp":tp,"entry_time":entry_time,"close_time":time.time()})
 
         else:  # LOSS
             stats["losses"] += 1
@@ -348,7 +350,8 @@ def _check_trades_inner(price_cache):
             photo_path = chart.make_result_chart(name, symbol, signal, entry, sl, tp, entry_time, "LOSS")
             send_result_photo(photo_path, msg, sig_msg_id)
             print("SL hit: " + name)
-            _append_journal({"pair":name,"side":signal,"result":"LOSS","pips":"-"+str(round(pips,4)),"note":"Auto - SL Hit","date":now})
+            _append_journal({"pair":name,"side":signal,"result":"LOSS","pips":"-"+str(round(pips,4)),"note":"Auto - SL Hit","date":now,
+                              "symbol":symbol,"entry":entry,"sl":sl,"tp":tp,"entry_time":entry_time,"close_time":time.time()})
 
     if closed:
         save_stats(stats)  # only write when stats actually changed

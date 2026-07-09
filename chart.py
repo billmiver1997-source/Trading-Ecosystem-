@@ -14,6 +14,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import mplfinance as mpf
 import yfinance as yf
+from PIL import Image, ImageDraw, ImageFont
 
 CHARTS_DIR = os.getenv("CHARTS_DIR", "/root/tradingbot/charts")
 
@@ -257,4 +258,78 @@ def make_equity_chart(journal_entries, rr=1.5):
     except Exception as e:
         print(f"make_equity_chart error: {e}")
         plt.close(fig)
+        return None
+
+
+def _load_font(size):
+    for path in (
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+    ):
+        try:
+            return ImageFont.truetype(path, size)
+        except OSError:
+            continue
+    return ImageFont.load_default()
+
+
+def make_weekly_collage(entries):
+    """Grid collage of the week's closed-trade charts, regenerated from each
+    journal entry's stored symbol/entry/sl/tp/entry_time (each individual result
+    chart is deleted right after sending, so this rebuilds them rather than
+    keeping every chart file on disk indefinitely)."""
+    thumbs = []
+    for e in entries:
+        symbol = e.get("symbol")
+        entry_time = e.get("entry_time")
+        if not symbol or entry_time is None:
+            continue
+        p = make_result_chart(e["pair"], symbol, e["side"], e["entry"], e["sl"], e["tp"], entry_time, e["result"])
+        if p:
+            thumbs.append((p, e))
+    if not thumbs:
+        return None
+
+    cols = 3
+    rows = (len(thumbs) + cols - 1) // cols
+    thumb_w, thumb_h = 420, 260
+    header_h = 90
+    margin = 10
+    canvas_w = cols * thumb_w + (cols + 1) * margin
+    canvas_h = header_h + rows * thumb_h + (rows + 1) * margin
+
+    canvas = Image.new("RGB", (canvas_w, canvas_h), "#131722")
+    draw = ImageDraw.Draw(canvas)
+
+    wins = sum(1 for _, e in thumbs if e["result"] == "WIN")
+    losses = sum(1 for _, e in thumbs if e["result"] == "LOSS")
+    bes = sum(1 for _, e in thumbs if e["result"] == "BE")
+    net_r = sum(1.5 if e["result"] == "WIN" else (-1.0 if e["result"] == "LOSS" else 0.0) for _, e in thumbs)
+
+    header_font = _load_font(28)
+    header_text = f"WEEKLY DIGEST — {len(thumbs)} trades  |  {wins}W {losses}L {bes}BE  |  Net {net_r:+.1f}R"
+    draw.text((margin, 25), header_text, fill="#e0e0e0", font=header_font)
+
+    for idx, (p, e) in enumerate(thumbs):
+        row, col = divmod(idx, cols)
+        x = margin + col * (thumb_w + margin)
+        y = header_h + margin + row * (thumb_h + margin)
+        try:
+            img = Image.open(p).convert("RGB").resize((thumb_w, thumb_h))
+            canvas.paste(img, (x, y))
+        except Exception as ex:
+            print(f"collage paste error: {ex}")
+        finally:
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+
+    os.makedirs(CHARTS_DIR, exist_ok=True)
+    out_path = os.path.join(CHARTS_DIR, "weekly_digest.png")
+    try:
+        canvas.save(out_path)
+        return out_path
+    except Exception as e:
+        print(f"make_weekly_collage save error: {e}")
         return None
