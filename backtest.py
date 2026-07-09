@@ -10,10 +10,14 @@ import time
 from datetime import datetime
 import pytz
 
+import chart
+
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
 if not TELEGRAM_TOKEN:
     raise RuntimeError("TELEGRAM_TOKEN_SIGNAL is not set in environment")
+SIGNALS_CHANNEL = os.getenv("SIGNALS_CHANNEL")
 USERS_FILE = "/root/tradingbot/users.json"
+JOURNAL_FILE = "/root/tradingbot/journal.json"
 
 # Same two pairs as signal_strategy.py — kept in sync deliberately, this weekly report
 # is an ongoing out-of-sample check on the exact strategy that's live, not a separate one.
@@ -33,6 +37,26 @@ def load_users():
         except (json.JSONDecodeError, ValueError, OSError) as e:
             print(f"load_users error: {e}")
     return []
+
+
+def send_channel_photo(photo_path, caption=""):
+    """Post the weekly equity curve to the signals channel once. Deletes the
+    file after sending — regenerated fresh next week, nothing to cache."""
+    if not SIGNALS_CHANNEL or not photo_path or not os.path.exists(photo_path):
+        return
+    try:
+        with open(photo_path, "rb") as pf:
+            r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
+                files={"photo": ("equity.png", pf, "image/png")},
+                data={"chat_id": SIGNALS_CHANNEL, "caption": caption[:1024]}, timeout=20)
+        r.raise_for_status()
+    except Exception as e:
+        print(f"send_channel_photo error: {e}")
+    finally:
+        try:
+            os.remove(photo_path)
+        except OSError:
+            pass
 
 
 def send_all(msg):
@@ -196,6 +220,16 @@ def run_backtest():
 
     send_all("\n".join(lines))
     print("Backtest report sent!")
+
+    try:
+        with open(JOURNAL_FILE) as f:
+            journal_entries = json.load(f)
+    except (json.JSONDecodeError, ValueError, OSError, FileNotFoundError) as e:
+        print(f"journal load error for equity chart: {e}")
+        journal_entries = []
+    if journal_entries:
+        equity_path = chart.make_equity_chart(journal_entries, rr=RR)
+        send_channel_photo(equity_path, caption="📈 Equity curve — all closed trades to date")
 
 
 def main():

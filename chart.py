@@ -199,3 +199,62 @@ def make_result_chart(name, symbol, signal, entry, sl, tp, entry_time, result_la
     except Exception as e:
         print(f"make_result_chart error {name}: {e}")
         return None
+
+
+def make_equity_chart(journal_entries, rr=1.5):
+    """Cumulative-R equity curve + drawdown from journal.json entries. Each entry's
+    "result" (WIN/LOSS/BE) is converted to its R multiple rather than reusing the
+    raw "pips" field, since pip size differs by instrument (FX vs XAU vs BTC)."""
+    if not journal_entries:
+        return None
+
+    cum, total = [], 0.0
+    for e in journal_entries:
+        result = e.get("result")
+        total += rr if result == "WIN" else (-1.0 if result == "LOSS" else 0.0)
+        cum.append(total)
+
+    peak = cum[0]
+    drawdown = []
+    for v in cum:
+        peak = max(peak, v)
+        drawdown.append(v - peak)
+
+    x = list(range(1, len(cum) + 1))
+
+    fig, (ax1, ax2) = plt.subplots(
+        2, 1, figsize=(10, 6), sharex=True, gridspec_kw={"height_ratios": [3, 1]},
+        facecolor="#131722",
+    )
+    for ax in (ax1, ax2):
+        ax.set_facecolor("#131722")
+        ax.tick_params(colors="#d1d4dc")
+        for spine in ax.spines.values():
+            spine.set_color("#2a2e39")
+        ax.grid(True, color="#2a2e39", linestyle="--", alpha=0.5)
+
+    ax1.plot(x, cum, color="#2962ff", linewidth=1.8)
+    ax1.axhline(0, color="#787b86", linewidth=0.8)
+    ax1.fill_between(x, cum, 0, where=[c >= 0 for c in cum], color="#26a69a", alpha=0.15)
+    ax1.fill_between(x, cum, 0, where=[c < 0 for c in cum], color="#ef5350", alpha=0.15)
+    ax1.set_ylabel("Cumulative R", color="#d1d4dc")
+    ax1.set_title(
+        f"Equity Curve — {len(cum)} trades  |  Net: {cum[-1]:+.1f}R",
+        color="#e0e0e0", fontsize=13, fontweight="bold",
+    )
+
+    ax2.fill_between(x, drawdown, 0, color="#ef5350", alpha=0.4)
+    ax2.set_ylabel("Drawdown (R)", color="#d1d4dc")
+    ax2.set_xlabel("Trade #", color="#d1d4dc")
+
+    os.makedirs(CHARTS_DIR, exist_ok=True)
+    out_path = os.path.join(CHARTS_DIR, "equity_curve.png")
+    try:
+        plt.tight_layout()
+        fig.savefig(out_path, dpi=130, facecolor="#131722")
+        plt.close(fig)
+        return out_path
+    except Exception as e:
+        print(f"make_equity_chart error: {e}")
+        plt.close(fig)
+        return None
