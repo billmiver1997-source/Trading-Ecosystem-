@@ -345,6 +345,9 @@ def main():
                             )
                             tripped_alerted.add(name)
                         continue
+                    else:
+                        # Pair has recovered — allow a fresh alert if it trips again later
+                        tripped_alerted.discard(name)
 
                     pair_ccys = PAIR_CURRENCIES.get(name, [])
                     if news_cache["blocked"] & set(pair_ccys):

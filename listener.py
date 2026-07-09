@@ -969,6 +969,11 @@ def _process_update(update):
         username = msg.get("from", {}).get("username", "")
         first_name = msg.get("from", {}).get("first_name", "")
         if chat_id:
+            # /start already sends the full WELCOME + keyboard — skip the extra
+            # "Menu restored:" message that _ensure_keyboard would otherwise prepend.
+            raw_cmd = text.strip().lower().split("@")[0] if text else ""
+            if raw_cmd in ("/start", "start"):
+                _keyboard_sent.add(chat_id)
             _ensure_keyboard(chat_id)
         if text and chat_id:
             handle_message(chat_id, text, username, first_name)
