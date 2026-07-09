@@ -510,7 +510,7 @@ def handle_message(chat_id, text, username, first_name=""):
         send_typing(chat_id)
         send_message(chat_id, get_analysis(pair_name), main_menu())
 
-    elif any(emoji in text for emoji in ["🇪🇺","🇬🇧","🪙","🟡","🔵","⛽","🇺🇸","🇦🇺","🥈","🟠","🇯🇵","🇳🇿"]):
+    elif any(emoji in text for emoji in ["🇪🇺","🇬🇧","🪙","🟡","🔵","⛽","🇺🇸","🇦🇺","🥈","🟠","🇯🇵","🇳🇿","🇨🇦"]):
         for k, v in ALIASES.items():
             if k in text_lower or v.lower() in text_lower:
                 send_typing(chat_id)
