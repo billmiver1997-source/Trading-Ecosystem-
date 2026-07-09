@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv("/root/tradingbot/.env")
 
+import random
 import requests
 import time
 import anthropic
@@ -121,7 +122,6 @@ SENTIMENT_HEADERS = [
 ]
 
 def format_message(fg, dxy, gold, vix):
-    import random
     tz = pytz.timezone("Europe/Athens")
     now = datetime.now(tz).strftime("%d/%m/%Y %H:%M")
 

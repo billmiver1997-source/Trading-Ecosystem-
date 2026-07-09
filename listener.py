@@ -17,22 +17,26 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
-ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
 USERS_FILE = "/root/tradingbot/users.json"
 PROFILES_FILE = "/root/tradingbot/user_profiles.json"
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-OWNER_ID = "8626233751"
+OWNER_ID = os.getenv("OWNER_ID", "8626233751")
+
+if not ANTHROPIC_API_KEY:
+    print("Warning: ANTHROPIC_API_KEY not set — AI features (analysis, news) will be unavailable")
 
 _anthropic_client = None
+_anthropic_lock = Lock()
 _analysis_cache = {}  # pair_name -> (timestamp, result_text)
 _analysis_cache_lock = Lock()
 _ANALYSIS_TTL = 900   # 15 minutes
 
 def _get_anthropic():
     global _anthropic_client
-    if _anthropic_client is None:
-        _anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    return _anthropic_client
+    with _anthropic_lock:
+        if _anthropic_client is None:
+            _anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        return _anthropic_client
 
 SYMBOLS = {
     "USD/CHF": "USDCHF=X", "AUD/USD": "AUDUSD=X", "EUR/USD": "EURUSD=X",
@@ -136,6 +140,8 @@ def get_updates(offset=None):
         return r.json()
     except Exception as e:
         print(f"get_updates error: {e}")
+        # Sleep before returning so a network outage doesn't spin the main loop at full speed
+        time.sleep(5)
         return {"result": []}
 
 def send_message(chat_id, text, reply_markup=None):
@@ -1027,13 +1033,17 @@ def _process_update(update):
         print(f"_process_update error: {e}")
 
 _keyboard_sent = set()  # chat_ids that already have the keyboard
+_keyboard_sent_lock = Lock()
 _update_executor = ThreadPoolExecutor(max_workers=20, thread_name_prefix="update")
 
 def _ensure_keyboard(chat_id):
     """Send keyboard to a chat if it hasn't received one since the last restart."""
-    if chat_id not in _keyboard_sent:
-        send_message(chat_id, "📋 Menu restored:", main_menu())
+    with _keyboard_sent_lock:
+        if chat_id in _keyboard_sent:
+            return
         _keyboard_sent.add(chat_id)
+    # Send outside the lock so we don't hold it during a network call
+    send_message(chat_id, "📋 Menu restored:", main_menu())
 
 def main():
     set_commands()

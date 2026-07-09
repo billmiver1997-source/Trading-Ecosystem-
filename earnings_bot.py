@@ -27,7 +27,7 @@ def load_users():
         try:
             with open(USERS_FILE) as f:
                 return json.load(f)
-        except (json.JSONDecodeError, ValueError) as e:
+        except (json.JSONDecodeError, ValueError, OSError) as e:
             print(f"load_users error: {e}")
     return []
 

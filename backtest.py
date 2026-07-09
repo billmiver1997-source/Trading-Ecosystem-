@@ -10,7 +10,11 @@ import time
 from datetime import datetime
 import pytz
 
-import chart
+try:
+    import chart
+except Exception as _chart_import_err:
+    chart = None
+    print(f"chart module unavailable: {_chart_import_err}")
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
 if not TELEGRAM_TOKEN:
@@ -26,7 +30,7 @@ PAIRS = {
     "Oil/USD": "CL=F",
 }
 
-RR = 1.5  # matches signal_strategy.RR
+RR = 2.0  # matches signal_strategy.RR (1.5x ATR SL, 3x ATR TP = 1:2 R:R)
 
 
 def load_users():
@@ -82,11 +86,12 @@ def backtest_pair(name, symbol):
         return None
     if len(df) < 300:
         try:
-            df = yf.Ticker(symbol).history(period="180d", interval="1h")
+            df180 = yf.Ticker(symbol).history(period="180d", interval="1h")
+            # Only upgrade to the wider window if it actually has more bars
+            if len(df180) > len(df):
+                df = df180
         except Exception as e:
             print(f"backtest_pair 180d fallback error {name}: {e}")
-            if len(df) < 261:
-                return None
     if len(df) < 261:
         return None
 
@@ -118,7 +123,7 @@ def backtest_pair(name, symbol):
             body_ratio = body / rng if rng > 0 else 0
             if touched and body > 0 and body_ratio > 0.5 and close.iloc[i] > ema20.iloc[i] and i+1 < n:
                 entry = open_.iloc[i+1]
-                sl = pull_low - a * 0.3
+                sl = pull_low - a * 1.5
                 risk = entry - sl
                 if risk <= 0:
                     continue
@@ -144,7 +149,7 @@ def backtest_pair(name, symbol):
             body_ratio = body / rng if rng > 0 else 0
             if touched and body > 0 and body_ratio > 0.5 and close.iloc[i] < ema20.iloc[i] and i+1 < n:
                 entry = open_.iloc[i+1]
-                sl = pull_high + a * 0.3
+                sl = pull_high + a * 1.5
                 risk = sl - entry
                 if risk <= 0:
                     continue
@@ -227,7 +232,7 @@ def run_backtest():
     except (json.JSONDecodeError, ValueError, OSError, FileNotFoundError) as e:
         print(f"journal load error for equity chart: {e}")
         journal_entries = []
-    if journal_entries:
+    if journal_entries and chart is not None:
         equity_path = chart.make_equity_chart(journal_entries, rr=RR)
         send_channel_photo(equity_path, caption="📈 Equity curve — all closed trades to date")
 

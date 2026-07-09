@@ -10,7 +10,11 @@ import time
 from datetime import datetime
 import pytz
 
-import chart
+try:
+    import chart
+except Exception as _chart_import_err:
+    chart = None
+    print(f"chart module unavailable: {_chart_import_err}")
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
 if not TELEGRAM_TOKEN:
@@ -229,8 +233,8 @@ def _check_trades_inner(price_cache):
         if not tp_hit and not sl_hit:
             half_move = abs(tp - entry) * 0.5
             sig_msg_id = trade.get("signal_message_id")
-            # Use 1e-6 epsilon: round(entry,5) < entry by float precision, causing infinite loop
-            if signal == "BUY" and price >= entry + half_move and sl < entry - 1e-6:
+            # Use 1e-5 epsilon: round(x,5) can differ from x by up to 5e-6, so 1e-6 is too tight
+            if signal == "BUY" and price >= entry + half_move and sl < entry - 1e-5:
                 trade["sl"] = round(entry, 5)
                 open_mins = int((time.time() - trade.get("time", time.time())) / 60)
                 dur = f"{open_mins//60}h {open_mins%60}min" if open_mins >= 60 else f"{open_mins}min"
@@ -241,9 +245,9 @@ def _check_trades_inner(price_cache):
                     f"Entry: {round(entry,5)}  ➡️  Current: {round(price,5)}\n"
                     f"SL moved to entry — risk = 0 ✅"
                 )
-                photo_path = chart.make_result_chart(name, symbol, signal, entry, trade["sl"], tp, trade.get("time", time.time()), "BE")
+                photo_path = chart.make_result_chart(name, symbol, signal, entry, trade["sl"], tp, trade.get("time", time.time()), "BE") if chart is not None else None
                 send_result_photo(photo_path, be_msg, sig_msg_id)
-            elif signal == "SELL" and price <= entry - half_move and sl > entry + 1e-6:
+            elif signal == "SELL" and price <= entry - half_move and sl > entry + 1e-5:
                 trade["sl"] = round(entry, 5)
                 open_mins = int((time.time() - trade.get("time", time.time())) / 60)
                 dur = f"{open_mins//60}h {open_mins%60}min" if open_mins >= 60 else f"{open_mins}min"
@@ -254,7 +258,7 @@ def _check_trades_inner(price_cache):
                     f"Entry: {round(entry,5)}  ➡️  Current: {round(price,5)}\n"
                     f"SL moved to entry — risk = 0 ✅"
                 )
-                photo_path = chart.make_result_chart(name, symbol, signal, entry, trade["sl"], tp, trade.get("time", time.time()), "BE")
+                photo_path = chart.make_result_chart(name, symbol, signal, entry, trade["sl"], tp, trade.get("time", time.time()), "BE") if chart is not None else None
                 send_result_photo(photo_path, be_msg, sig_msg_id)
 
         if tp_hit:
@@ -310,7 +314,7 @@ def _check_trades_inner(price_cache):
                 "Profit: +" + str(pips_display) + " " + pips_unit + " \U0001f7e2\n\n"
                 "\U0001f4ca " + str(stats["wins"]) + "W / " + str(stats["losses"]) + "L | WR: " + str(winrate) + "%"
             )
-            photo_path = chart.make_result_chart(name, symbol, signal, entry, sl, tp, entry_time, "WIN")
+            photo_path = chart.make_result_chart(name, symbol, signal, entry, sl, tp, entry_time, "WIN") if chart is not None else None
             send_result_photo(photo_path, msg, sig_msg_id)
             print("TP hit: " + name)
             _append_journal({"pair":name,"side":signal,"result":"WIN","pips":"+"+str(round(pips,4)),"note":"Auto - TP Hit","date":now,
@@ -324,7 +328,7 @@ def _check_trades_inner(price_cache):
                 + signal + ": Entry " + str(round(entry, 5)) + "\n"
                 "SL hit at entry — capital protected"
             )
-            photo_path = chart.make_result_chart(name, symbol, signal, entry, sl, tp, entry_time, "BE")
+            photo_path = chart.make_result_chart(name, symbol, signal, entry, sl, tp, entry_time, "BE") if chart is not None else None
             send_result_photo(photo_path, msg, sig_msg_id)
             print("BE closed: " + name)
             _append_journal({"pair":name,"side":signal,"result":"BE","pips":"0","note":"Auto - Breakeven","date":now,
@@ -347,7 +351,7 @@ def _check_trades_inner(price_cache):
                 "Loss: -" + str(pips_display) + " " + pips_unit + " \U0001f534\n\n"
                 "\U0001f4ca " + str(stats["wins"]) + "W / " + str(stats["losses"]) + "L | WR: " + str(winrate) + "%"
             )
-            photo_path = chart.make_result_chart(name, symbol, signal, entry, sl, tp, entry_time, "LOSS")
+            photo_path = chart.make_result_chart(name, symbol, signal, entry, sl, tp, entry_time, "LOSS") if chart is not None else None
             send_result_photo(photo_path, msg, sig_msg_id)
             print("SL hit: " + name)
             _append_journal({"pair":name,"side":signal,"result":"LOSS","pips":"-"+str(round(pips,4)),"note":"Auto - SL Hit","date":now,

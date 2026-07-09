@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv("/root/tradingbot/.env")
 
+import random
 import requests
 import anthropic
 import schedule
@@ -58,7 +59,6 @@ def ai(prompt):
         return ""
 
 def daily_tip():
-    import random
     topics = [
         ("risk management and position sizing", "the #1 rule most traders ignore about protecting their capital"),
         ("reading market structure and trends", "how to identify where the market is really going before it gets there"),
@@ -89,7 +89,6 @@ def daily_tip():
         send(random.choice(headers)+"\n\n"+text+"\n\n📊 @novasignalschannel1\n\n⚠️ Educational purposes only. Not financial advice.", photo_name="tips.jpg")
 
 def psychology_post():
-    import random
     prompts = [
         "Write a trading psychology post for forex/crypto traders. Include a quote from a famous trader or investor (real quote). Then give 2-3 sentences of your own take on discipline, FOMO, or patience. Write naturally, like a mentor talking to a student. Use emojis. Plain text.",
         "Write about a common psychological trap traders fall into — revenge trading, overtrading, or fear of missing out. Be honest and direct. Include a real trading quote. 3-5 sentences. Emojis. Plain text.",
@@ -102,7 +101,6 @@ def psychology_post():
         send(random.choice(headers)+"\n\n"+text+"\n\n📊 @novasignalschannel1", photo_name="psychology.jpg")
 
 def weekly_preview():
-    import random
     tz = pytz.timezone("Europe/Athens")
     week = datetime.now(tz).strftime("%d/%m/%Y")
     prompts = [
@@ -116,7 +114,6 @@ def weekly_preview():
         send(random.choice(headers)+" | "+week+"\n\n"+text+"\n\n📊 @novasignalschannel1", photo_name="weekly.jpg")
 
 def weekly_summary():
-    import random
     prompts = [
         "Write an end-of-week trading summary. What were the main market themes this week? What moved and why? End with a forward-looking sentence for next week. 4-5 sentences. Emojis. Plain text.",
         "Write a Friday wrap-up for forex and crypto traders. Cover the week's biggest moves, what surprised markets, and what traders should carry into next week. Keep it honest and specific. 4-5 sentences. Emojis.",
