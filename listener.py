@@ -454,7 +454,6 @@ def handle_message(chat_id, text, username, first_name=""):
     elif text_lower in ["🌍 news", "/news"]:
         send_typing(chat_id)
         try:
-            import feedparser
             tz = pytz.timezone("Europe/Athens")
             now_str = datetime.now(tz).strftime("%d/%m/%Y %H:%M")
             keywords = ["war","attack","fed","rate","inflation","trump","tariff","oil","gold","dollar","ukraine","iran","china","russia","market","crash","rally","ceasefire","ecb","boe","sanctions"]

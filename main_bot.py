@@ -12,6 +12,8 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKe
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
 TOKEN = os.getenv("TELEGRAM_TOKEN_MAIN")
+if not TOKEN:
+    raise RuntimeError("TELEGRAM_TOKEN_MAIN is not set in environment")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 OWNER_ID = 8626233751
 USERS_FILE = "/root/tradingbot/users.json"

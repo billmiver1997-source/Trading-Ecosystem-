@@ -272,8 +272,9 @@ def main():
                 _now = datetime.now(tz)
                 _wake = _now.replace(hour=6, minute=55, second=0, microsecond=0)
                 if _wake <= _now:
-                    # Already past 06:55 but still hour < 7 (06:55-06:59); add 1 day
-                    _wake += timedelta(days=1)
+                    # Already past 06:55 but still before 07:00 — sleep briefly, don't skip a day
+                    time.sleep(30)
+                    continue
                 _secs = (_wake - _now).total_seconds()
                 time.sleep(min(_secs, 1800))
                 continue
