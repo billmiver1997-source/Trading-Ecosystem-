@@ -93,7 +93,7 @@ def get_analysis(earnings):
             system="You are a financial analyst briefing traders. Write in plain English only, no markdown.",
             messages=[{"role":"user","content":"These major companies report earnings today. Write 2-3 simple sentences about what traders should watch and how it might affect markets, USD and risk sentiment.\n\n"+earnings_text}]
         )
-        return message.content[0].text
+        return message.content[0].text if message.content else ""
     except Exception as e:
         print(f"get_analysis error: {e}")
         return ""
@@ -137,7 +137,7 @@ def main():
                 users = load_users()
                 if send_all(msg) > 0 or not users:
                     sent_today = today
-                print("Earnings sent! "+str(len(earnings))+" companies")
+                    print("Earnings sent! "+str(len(earnings))+" companies")
                 time.sleep(600)
             else:
                 time.sleep(300)

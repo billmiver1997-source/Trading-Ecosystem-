@@ -131,8 +131,10 @@ def send_channel_text(msg):
             json={"chat_id": SIGNALS_CHANNEL, "text": msg[:4000]}, timeout=10,
         )
         r.raise_for_status()
+        return True
     except Exception as e:
         print("Send channel text error: " + str(e))
+        return False
 
 
 def get_data(symbol):
@@ -314,7 +316,7 @@ def main():
     print("Pullback strategy started (1H timeframe, USD/CAD + Oil/USD)...")
     last_signals = _load_json(LAST_SIGNAL_FILE, {})
     tripped_alerted = set()
-    news_cache = {"time": 0, "blocked": set()}
+    news_blocked: set = set()
 
     while True:
         try:
@@ -323,9 +325,7 @@ def main():
                 time.sleep(3600)
                 continue
 
-            # TTL was 3600s but the loop also sleeps 3600s, so the cache
-            # expired on every single iteration. Call unconditionally instead.
-            news_cache["blocked"] = get_news_blocked_currencies()
+            news_blocked = get_news_blocked_currencies()
 
             open_trades = _load_json("/root/tradingbot/open_trades.json", [])
             open_pairs = set(t["name"] for t in open_trades)
@@ -337,17 +337,21 @@ def main():
 
                     if circuit_breaker_tripped(name):
                         if name not in tripped_alerted:
-                            send_channel_text(
+                            # Only mark as alerted if Telegram delivery succeeds
+                            if send_channel_text(
                                 "⚠️ " + name + " signals paused — win rate fell below "
                                 + str(int(CIRCUIT_BREAKER_MIN_WINRATE * 100))
                                 + "% over the last " + str(CIRCUIT_BREAKER_MIN_TRADES) + "+ trades. "
                                 "Needs manual review before resuming."
-                            )
-                            tripped_alerted.add(name)
+                            ):
+                                tripped_alerted.add(name)
                         continue
+                    else:
+                        # Pair has recovered — allow a fresh alert if it trips again later
+                        tripped_alerted.discard(name)
 
                     pair_ccys = PAIR_CURRENCIES.get(name, [])
-                    if news_cache["blocked"] & set(pair_ccys):
+                    if news_blocked & set(pair_ccys):
                         print(f"Skipping {name} — news filter active")
                         continue
 
@@ -361,16 +365,23 @@ def main():
                     if last_signals.get(dedup_key, {}).get("confirm_bar_time") == setup["confirm_bar_time"]:
                         continue  # already signaled this exact confirmation candle
 
-                    # Signal sending inside the per-pair try/except so an error
-                    # for one pair cannot abort the entire for loop.
                     msg = format_setup(name, setup)
-                    photo_path = chart.make_signal_chart(
-                        name, symbol, setup["bias"], setup["price"], setup["sl"], setup["tp"]
-                    )
+                    try:
+                        photo_path = chart.make_signal_chart(
+                            name, symbol, setup["bias"], setup["price"], setup["sl"], setup["tp"]
+                        )
+                    except Exception as chart_err:
+                        print(f"Chart generation failed for {name}: {chart_err}")
+                        photo_path = None
                     msg_id = send_signal_photo(msg, photo_path)
+                    if msg_id is None:
+                        # Telegram delivery failed — don't record dedup or open trade
+                        print(f"Signal send failed for {name} — will retry next cycle.")
+                        continue
+                    # Register trade and dedup only after confirmed delivery
+                    add_trade(name, setup, signal_message_id=msg_id)
                     last_signals[dedup_key] = {"time": time.time(), "confirm_bar_time": setup["confirm_bar_time"]}
                     _save_json(LAST_SIGNAL_FILE, last_signals)
-                    add_trade(name, setup, signal_message_id=msg_id)
                     print(f"Signal sent: {name} {setup['bias']} entry:{setup['price']} sl:{setup['sl']} tp:{setup['tp']} msg_id:{msg_id}")
                 except Exception as e:
                     print(f"Error {name}: {e}")

@@ -16,6 +16,8 @@ TOKEN = os.getenv("TELEGRAM_TOKEN_NEWS")
 if not TOKEN:
     raise RuntimeError("TELEGRAM_TOKEN_NEWS is not set in environment")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+if not ANTHROPIC_API_KEY:
+    raise RuntimeError("ANTHROPIC_API_KEY is not set in environment")
 
 MAIN_MENU = ReplyKeyboardMarkup([
     ["🇺🇦 Ukraine", "🇬🇷 Ελλάδα"],
@@ -157,7 +159,7 @@ def get_ai_summary(headlines, category):
             system=system_prompt,
             messages=[{"role":"user","content":"Headlines:\n"+"\n".join(headlines)}]
         )
-        return message.content[0].text
+        return message.content[0].text if message.content else "AI summary temporarily unavailable."
     except Exception as e:
         print(f"get_ai_summary error ({category}): {e}")
         return "AI summary temporarily unavailable."
@@ -353,7 +355,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     system=system,
                     messages=[{"role":"user","content":"Headlines:\n\n"+"\n".join(all_h[:8])}]
                 )
-                return message.content[0].text
+                return message.content[0].text if message.content else "\n".join("• "+h for h in all_h[:5])
             except Exception as e:
                 print(f"Latest news AI error: {e}")
                 return "\n".join("• "+h for h in all_h[:5])

@@ -39,10 +39,8 @@ def save_users(users):
         print(f"save_users error: {e}")
 
 def track_user(user, bot_name="main"):
-    from datetime import datetime as dt
-    import pytz
     tz = pytz.timezone("Europe/Athens")
-    now = dt.now(tz).strftime("%d/%m/%Y %H:%M")
+    now = datetime.now(tz).strftime("%d/%m/%Y %H:%M")
     users = load_users()
     uid = str(user.id)
     is_new = uid not in users
@@ -146,10 +144,10 @@ def get_market_overview():
     for name, symbol in pairs.items():
         try:
             df = yf.Ticker(symbol).history(period="5d", interval="1h")
-            if len(df) < 2:
+            if len(df) < 25:  # need at least 24 bars back for the 24h change
                 continue
             price = df["Close"].iloc[-1]
-            change = ((df["Close"].iloc[-1] - df["Close"].iloc[-24]) / df["Close"].iloc[-24]) * 100
+            change = ((df["Close"].iloc[-1] - df["Close"].iloc[-25]) / df["Close"].iloc[-25]) * 100
             emoji = "\U0001f7e2" if change > 0 else "\U0001f534"
             result.append(emoji+" "+name+": "+str(round(price,4))+" ("+("{:+.2f}".format(change))+"%)")
         except Exception as e:
@@ -176,10 +174,13 @@ def get_education(topic):
             "psychology": "Explain trading psychology: FOMO, revenge trading, discipline. Max 200 words. Use emojis. Plain text only.",
             "howtostart": "Step by step guide to start trading for a complete beginner. Max 200 words. Use emojis. Plain text only.",
         }
+        prompt_text = prompts.get(topic, "")
+        if not prompt_text:
+            return "Education content for this topic is not available."
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=500,
-            messages=[{"role": "user", "content": prompts.get(topic, "")}]
+            messages=[{"role": "user", "content": prompt_text}]
         )
         return message.content[0].text
     except Exception as e:
@@ -204,13 +205,25 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Main menu:", reply_markup=main_menu())
     elif text == "\U0001f4da Education":
         edu_caption = "TMGM Academy - Access world-class trading education."
-        with open("/opt/tradingbot/tmgm_logo.png", "rb") as photo:
-            await context.bot.send_photo(chat_id=update.effective_chat.id, photo=photo, caption=edu_caption, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("TMGM Academy", url="https://www.tmgm.com/en/academy/overview")]]))
+        try:
+            with open("/opt/tradingbot/tmgm_logo.png", "rb") as photo:
+                await context.bot.send_photo(chat_id=update.effective_chat.id, photo=photo, caption=edu_caption, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("TMGM Academy", url="https://www.tmgm.com/en/academy/overview")]]))
+        except (FileNotFoundError, OSError) as e:
+            print(f"Education logo missing: {e}")
+        except Exception as e:
+            print(f"send_photo error (education): {e}")
         await update.message.reply_text("Choose a topic:", reply_markup=edu_menu())
     elif text == "\U0001f4b9 Brokers":
         msg = ("💹 TMGM | Trade. Markets. Growth. Mastery.\n\nTMGM is an institutional-grade broker offering world-class trading conditions.\n\n📌 Key Features:\n- 12,000+ instruments (Forex, Stocks, Indices, Commodities, Crypto)\n- Leverage up to 1:500\n- Ultra-low spreads from 0.0 pips\n- MT4 & MT5 platforms\n- Regulated: ASIC (Australia) & VFSC\n- Fast execution & deep liquidity\n- 24/7 multilingual support\n\n🎯 Refer Code: IB1750034233G\n\nOpen your account and start trading with institutional conditions:")
-        with open("/opt/tradingbot/tmgm_logo.png", "rb") as photo:
-            await context.bot.send_photo(chat_id=update.effective_chat.id, photo=photo, caption=msg, reply_markup=broker_links())
+        try:
+            with open("/opt/tradingbot/tmgm_logo.png", "rb") as photo:
+                await context.bot.send_photo(chat_id=update.effective_chat.id, photo=photo, caption=msg, reply_markup=broker_links())
+        except (FileNotFoundError, OSError) as e:
+            print(f"Broker logo missing: {e}")
+            await update.message.reply_text(msg, reply_markup=broker_links())
+        except Exception as e:
+            print(f"send_photo error (brokers): {e}")
+            await update.message.reply_text(msg, reply_markup=broker_links())
         await update.message.reply_text("Choose an option:", reply_markup=broker_menu())
     elif text == "\U0001f4ca Market Overview":
         await update.message.reply_text("\U0001f504 Loading...", reply_markup=main_menu())
@@ -234,8 +247,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "\U0001f3af Refer Code: IB1750034233G\n\n"
             "Open your account and start trading with institutional conditions:"
         )
-        with open("/opt/tradingbot/tmgm_logo.png", "rb") as photo:
-            await context.bot.send_photo(chat_id=update.effective_chat.id, photo=photo, caption=msg, reply_markup=broker_links())
+        try:
+            with open("/opt/tradingbot/tmgm_logo.png", "rb") as photo:
+                await context.bot.send_photo(chat_id=update.effective_chat.id, photo=photo, caption=msg, reply_markup=broker_links())
+        except (FileNotFoundError, OSError) as e:
+            print(f"TMGM info logo missing: {e}")
+            await update.message.reply_text(msg, reply_markup=broker_links())
+        except Exception as e:
+            print(f"send_photo error (TMGM info): {e}")
+            await update.message.reply_text(msg, reply_markup=broker_links())
     elif text == "\U0001f381 What You Get":
         msg = (
             "\U0001f381 WHAT YOU GET FOR FREE\n\n"

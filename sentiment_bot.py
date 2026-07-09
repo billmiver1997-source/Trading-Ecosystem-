@@ -149,7 +149,7 @@ def format_message(fg, dxy, gold, vix):
             system=style,
             messages=[{"role":"user","content":"Sentiment data:\n"+data}]
         )
-        ai_text = message.content[0].text
+        ai_text = message.content[0].text if message.content else data
     except Exception as e:
         print(f"sentiment AI error: {e}")
         ai_text = data
