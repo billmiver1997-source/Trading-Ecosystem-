@@ -350,7 +350,8 @@ def _check_trades_inner(price_cache):
             print("SL hit: " + name)
             _append_journal({"pair":name,"side":signal,"result":"LOSS","pips":"-"+str(round(pips,4)),"note":"Auto - SL Hit","date":now})
 
-    save_stats(stats)  # single write after all closed trades are processed
+    if closed:
+        save_stats(stats)  # only write when stats actually changed
 
 def send_daily_stats():
     stats = load_stats()

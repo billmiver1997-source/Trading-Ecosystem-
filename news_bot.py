@@ -211,7 +211,7 @@ def create_report(items):
             system=style["system"],
             messages=[{"role":"user","content":style["user"].format(headlines="\n".join(titles[:10]))}]
         )
-        return message.content[0].text, top_links
+        return (message.content[0].text if message.content else None), top_links
     except Exception as e:
         print("AI error: "+str(e))
         return None, []
@@ -270,7 +270,7 @@ def main():
                             links_section = "\n\n📎 Read more:\n"
                             for title, url in top_links:
                                 short = title[:55]+"…" if len(title) > 55 else title
-                                safe_url = url.replace("&", "&amp;")
+                                safe_url = _html.escape(url, quote=True)
                                 links_section += f'• <a href="{safe_url}">{_html.escape(short)}</a>\n'
                             links_str = links_section.rstrip()
                             # Clamp base so base+links never exceeds 1024 chars

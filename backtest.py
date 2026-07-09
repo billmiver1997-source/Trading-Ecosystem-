@@ -39,7 +39,7 @@ def send_all(msg):
     for chat_id in load_users():
         try:
             r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
-                json={"chat_id": chat_id, "text": msg[:4000]}, timeout=10)
+                json={"chat_id": chat_id, "text": msg[:4096]}, timeout=10)
             r.raise_for_status()
             time.sleep(0.1)
         except Exception as e:
@@ -53,11 +53,16 @@ def backtest_pair(name, symbol):
     confirmation candle closes — no look-ahead bias."""
     try:
         df = yf.Ticker(symbol).history(period="90d", interval="1h")
-        if len(df) < 300:
-            df = yf.Ticker(symbol).history(period="180d", interval="1h")
     except Exception as e:
         print(f"backtest_pair data error {name}: {e}")
         return None
+    if len(df) < 300:
+        try:
+            df = yf.Ticker(symbol).history(period="180d", interval="1h")
+        except Exception as e:
+            print(f"backtest_pair 180d fallback error {name}: {e}")
+            if len(df) < 261:
+                return None
     if len(df) < 261:
         return None
 

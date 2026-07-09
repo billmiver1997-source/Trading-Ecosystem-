@@ -52,7 +52,7 @@ def ai(prompt):
             max_tokens=300,
             messages=[{"role":"user","content":prompt}]
         )
-        return r.content[0].text
+        return r.content[0].text if r.content else ""
     except Exception as e:
         print("AI error: "+str(e))
         return ""
@@ -136,6 +136,7 @@ def main():
     except TypeError:
         # schedule >= 1.2.0 is required for timezone support; fall back to bare times
         print("WARNING: schedule>=1.2.0 required for timezone support; jobs will run in server local time")
+        schedule.clear()
         schedule.every().day.at("06:00").do(daily_tip)
         schedule.every().monday.at("05:00").do(weekly_preview)
         schedule.every().friday.at("17:00").do(weekly_summary)

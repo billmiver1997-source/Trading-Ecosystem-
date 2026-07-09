@@ -95,7 +95,7 @@ def get_analysis(events):
             system="You are a forex analyst. Write in simple English only. No markdown.",
             messages=[{"role":"user","content":"Look at these economic events for today and write 3-4 simple sentences about what traders should watch. Which pairs will move most?\n\nEvents:\n"+events_text}]
         )
-        return message.content[0].text
+        return message.content[0].text if message.content else ""
     except Exception as e:
         print(f"get_analysis error: {e}")
         return ""
@@ -136,8 +136,8 @@ def main():
                 msg = format_message(events, analysis)
                 if send_channel(msg):
                     sent_today = today
-                print("Calendar sent! "+str(len(events))+" events")
-                time.sleep(600)
+                    print("Calendar sent! "+str(len(events))+" events")
+                    time.sleep(600)
             else:
                 time.sleep(300)
 

@@ -5,6 +5,7 @@ load_dotenv("/root/tradingbot/.env")
 import fcntl
 import random
 import requests
+import feedparser
 import json
 import time
 import pandas as pd
@@ -13,7 +14,7 @@ import anthropic
 import pytz
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
-from threading import Thread, Lock
+from threading import Lock
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
 ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
@@ -184,8 +185,9 @@ def pairs_menu():
             [{"text": "\U0001fa99 XAU/USD"}, {"text": "\U0001f7e1 BTC/USD"}],
             [{"text": "\U0001f535 SOL/USD"}, {"text": "\u26fd Oil/USD"}],
             [{"text": "\U0001f1fa\U0001f1f8 USD/CHF"}, {"text": "\U0001f1e6\U0001f1fa AUD/USD"}],
-            [{"text": "🥈 Silver/USD"}, {"text": "🟠 Copper/USD"}],
-            [{"text": "🇯🇵 USD/JPY"}, {"text": "🇳🇿 NZD/USD"}],
+            [{"text": "\U0001f1e8\U0001f1e6 USD/CAD"}, {"text": "🥈 Silver/USD"}],
+            [{"text": "🟠 Copper/USD"}, {"text": "🇯🇵 USD/JPY"}],
+            [{"text": "🇳🇿 NZD/USD"}],
             [{"text": "\U0001f519 Back to Menu"}],
         ],
         "resize_keyboard": True,
@@ -209,7 +211,7 @@ def get_analysis(pair_name):
     with _analysis_cache_lock:
         cached = _analysis_cache.get(pair_name)
         if cached and time.time() - cached[0] < _ANALYSIS_TTL:
-            return cached[1] + "\n\n⚡ Live data — cached < 15min"
+            return cached[1] + "\n\n🕐 Cached result (< 15 min old)"
     # Fetch outside lock so concurrent requests for different pairs don't serialize
     result = _fetch_analysis(pair_name)
     with _analysis_cache_lock:
@@ -230,8 +232,9 @@ def _fetch_analysis(pair_name):
         ema20 = close.ewm(span=20).mean().iloc[-1]
         ema50 = close.ewm(span=50).mean().iloc[-1]
         delta = close.diff()
-        gain = delta.clip(lower=0).rolling(14).mean()
-        loss = -delta.clip(upper=0).rolling(14).mean()
+        # Wilder's EMA (com=13) matches charting platforms; simple rolling() diverges in trends
+        gain = delta.clip(lower=0).ewm(com=13, adjust=False).mean()
+        loss = (-delta.clip(upper=0)).ewm(com=13, adjust=False).mean()
         loss = loss.replace(0, 1e-10)  # prevent NaN RSI on all-flat windows
         rsi = (100 - (100 / (1 + gain / loss))).iloc[-1]
         prev_close = close.shift(1)
@@ -262,7 +265,8 @@ def _fetch_analysis(pair_name):
             "EMA20: "+str(round(ema20,5))+" | EMA50: "+str(round(ema50,5))+"\n"
             "RSI: "+str(round(rsi,1))+" | MACD: "+str(round(macd,5))+" | Signal: "+str(round(macd_sig,5))+"\n"
             "ATR: "+str(round(atr,5))+" ("+str(atr_pct)+"% of price)\n"
-            "Bollinger Bands: "+str(round(bb_lower,5))+" / "+str(round(bb_upper,5))
+            "Bollinger Bands: "+str(round(bb_lower,5))+" / "+str(round(bb_upper,5))+"\n"
+            "5D High: "+str(round(high.max(),5))+" | 5D Low: "+str(round(low.min(),5))
         )
         prompt = style + data_context
         message = client.messages.create(
@@ -320,7 +324,11 @@ def get_status():
     if trades:
         lines.append("\U0001f4cc Open Trades ("+str(len(trades))+"):")
         for t in trades:
-            lines.append("- "+t["name"]+" "+t["signal"]+" @ "+str(round(t["entry"],4)))
+            try:
+                lines.append("- "+t["name"]+" "+t["signal"]+" @ "+str(round(t["entry"],4)))
+            except (KeyError, TypeError) as e:
+                print(f"get_status trade format error: {e}")
+                lines.append("- [malformed trade entry]")
     else:
         lines.append("No open trades right now.")
     lines.append("\n\U0001f4ca Stats: "+str(stats.get("wins",0))+"W / "+str(stats.get("losses",0))+"L | WR: "+str(wr)+"%")
@@ -595,6 +603,9 @@ def handle_message(chat_id, text, username, first_name=""):
             print(f"Volatility handler error: {e}")
             send_message(chat_id, "💥 Volatility data temporarily unavailable.", main_menu())
 
+    elif text_lower in ["/mtf", "mtf"]:
+        send_message(chat_id, "📊 MTF ANALYSIS\n\nSpecify a pair: /mtf EURUSD\n\nExample: /mtf XAUUSD", main_menu())
+
     elif text_lower.startswith("/mtf ") or text_lower.startswith("mtf "):
         send_typing(chat_id)
         try:
@@ -613,8 +624,8 @@ def handle_message(chat_id, text, username, first_name=""):
                         ema20 = close.ewm(span=20).mean().iloc[-1]
                         ema50 = close.ewm(span=50).mean().iloc[-1]
                         delta = close.diff()
-                        gain = delta.clip(lower=0).rolling(14).mean()
-                        loss_s = -delta.clip(upper=0).rolling(14).mean()
+                        gain = delta.clip(lower=0).ewm(com=13, adjust=False).mean()
+                        loss_s = (-delta.clip(upper=0)).ewm(com=13, adjust=False).mean()
                         loss_s = loss_s.replace(0, 1e-10)
                         rsi = (100-(100/(1+gain/loss_s))).iloc[-1]
                         macd_line = close.ewm(span=12).mean()-close.ewm(span=26).mean()
@@ -703,7 +714,7 @@ def handle_message(chat_id, text, username, first_name=""):
                     pl_emoji = "🟢" if pl_pips > 0 else "🔴"
                     total_pl += pl_pips
                     lines_p.append(pl_emoji+" "+t["name"]+" "+t["signal"]+" @ "+str(round(entry,4))+" | "+str(pl_pips)+" pips")
-                total_emoji = "🟢" if total_pl > 0 else "🔴"
+                total_emoji = "🟢" if total_pl > 0 else ("🟡" if total_pl == 0 else "🔴")
                 lines_p.append("\n"+total_emoji+" Total: "+str(round(total_pl,1))+" pips est.")
                 send_message(chat_id, "\n".join(lines_p), main_menu())
         except Exception as e:
@@ -720,18 +731,24 @@ def handle_message(chat_id, text, username, first_name=""):
             sl = float([p for p in parts if p.startswith("SL:")][0].replace("SL:",""))
             tp = float([p for p in parts if p.startswith("TP:")][0].replace("TP:",""))
             lots = float([p for p in parts if p.startswith("LOTS:")][0].replace("LOTS:",""))
-            trades = []
-            if os.path.exists(port_file):
+            lock_path = port_file + '.lock'
+            with open(lock_path, 'a') as _lf:
+                fcntl.flock(_lf, fcntl.LOCK_EX)
                 try:
-                    with open(port_file) as f:
-                        trades = json.load(f)
-                except (json.JSONDecodeError, ValueError) as e:
-                    print(f"Portfolio JSON error: {e}")
-            trades.append({"pair":pair,"side":side,"entry":entry,"sl":sl,"tp":tp,"lots":lots})
-            _tmp = port_file + '.tmp'
-            with open(_tmp, 'w') as f:
-                json.dump(trades, f)
-            os.replace(_tmp, port_file)
+                    trades = []
+                    if os.path.exists(port_file):
+                        try:
+                            with open(port_file) as f:
+                                trades = json.load(f)
+                        except (json.JSONDecodeError, ValueError) as e:
+                            print(f"Portfolio JSON error: {e}")
+                    trades.append({"pair":pair,"side":side,"entry":entry,"sl":sl,"tp":tp,"lots":lots})
+                    _tmp = port_file + '.tmp'
+                    with open(_tmp, 'w') as f:
+                        json.dump(trades, f)
+                    os.replace(_tmp, port_file)
+                finally:
+                    fcntl.flock(_lf, fcntl.LOCK_UN)
             send_message(chat_id, "💼 Trade added!\n\n"+pair+" "+side+" @ "+str(entry)+"\nSL: "+str(sl)+" | TP: "+str(tp)+"\nLots: "+str(lots), main_menu())
         except Exception as e:
             print(f"Portfolio add error: {e}")
@@ -770,18 +787,24 @@ def handle_message(chat_id, text, username, first_name=""):
             result = parts[2]
             pips = parts[3] if len(parts) > 3 else ""
             note = " ".join(parts[4:]).lower() if len(parts) > 4 else ""
-            entries = []
-            if os.path.exists(journal_file):
+            lock_path = journal_file + '.lock'
+            with open(lock_path, 'a') as _lf:
+                fcntl.flock(_lf, fcntl.LOCK_EX)
                 try:
-                    with open(journal_file) as f:
-                        entries = json.load(f)
-                except (json.JSONDecodeError, ValueError) as e:
-                    print(f"Journal JSON error: {e}")
-            entries.append({"pair":pair,"side":side,"result":result,"pips":pips,"note":note,"date":datetime.now(pytz.timezone("Europe/Athens")).strftime("%d/%m/%Y")})
-            _tmp = journal_file + '.tmp'
-            with open(_tmp, 'w') as f:
-                json.dump(entries, f)
-            os.replace(_tmp, journal_file)
+                    entries = []
+                    if os.path.exists(journal_file):
+                        try:
+                            with open(journal_file) as f:
+                                entries = json.load(f)
+                        except (json.JSONDecodeError, ValueError) as e:
+                            print(f"Journal JSON error: {e}")
+                    entries.append({"pair":pair,"side":side,"result":result,"pips":pips,"note":note,"date":datetime.now(pytz.timezone("Europe/Athens")).strftime("%d/%m/%Y")})
+                    _tmp = journal_file + '.tmp'
+                    with open(_tmp, 'w') as f:
+                        json.dump(entries, f)
+                    os.replace(_tmp, journal_file)
+                finally:
+                    fcntl.flock(_lf, fcntl.LOCK_UN)
             send_message(chat_id, "📓 Journal entry added!", main_menu())
         except Exception as e:
             print(f"Journal add error: {e}")
@@ -828,24 +851,30 @@ def handle_message(chat_id, text, username, first_name=""):
             broker = [p for p in parts if p.startswith("BROKER:")][0].replace("BROKER:","").lower()
             lots = float([p for p in parts if p.startswith("LOTS:")][0].replace("LOTS:",""))
             gold = float([p for p in parts if p.startswith("GOLD:")][0].replace("GOLD:","")) if any(p.startswith("GOLD:") for p in parts) else 0
-            clients = []
-            if os.path.exists(ib_file):
+            lock_path = ib_file + '.lock'
+            with open(lock_path, 'a') as _lf:
+                fcntl.flock(_lf, fcntl.LOCK_EX)
                 try:
-                    with open(ib_file) as f:
-                        clients = json.load(f)
-                except (json.JSONDecodeError, ValueError) as e:
-                    print(f"IB clients JSON error: {e}")
-            existing = [c for c in clients if c["name"] == name]
-            if existing:
-                existing[0]["lots"] = lots
-                existing[0]["gold"] = gold
-                existing[0]["broker"] = broker
-            else:
-                clients.append({"name":name,"broker":broker,"lots":lots,"gold":gold})
-            _tmp = ib_file + '.tmp'
-            with open(_tmp, 'w') as f:
-                json.dump(clients, f)
-            os.replace(_tmp, ib_file)
+                    clients = []
+                    if os.path.exists(ib_file):
+                        try:
+                            with open(ib_file) as f:
+                                clients = json.load(f)
+                        except (json.JSONDecodeError, ValueError) as e:
+                            print(f"IB clients JSON error: {e}")
+                    existing = [c for c in clients if c["name"] == name]
+                    if existing:
+                        existing[0]["lots"] = lots
+                        existing[0]["gold"] = gold
+                        existing[0]["broker"] = broker
+                    else:
+                        clients.append({"name":name,"broker":broker,"lots":lots,"gold":gold})
+                    _tmp = ib_file + '.tmp'
+                    with open(_tmp, 'w') as f:
+                        json.dump(clients, f)
+                    os.replace(_tmp, ib_file)
+                finally:
+                    fcntl.flock(_lf, fcntl.LOCK_UN)
             send_message(chat_id, "👤 Client "+name+" saved!", main_menu())
         except Exception as e:
             print(f"IB client add error: {e}")
