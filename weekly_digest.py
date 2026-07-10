@@ -13,7 +13,11 @@ import requests
 import pytz
 from datetime import datetime
 
-import chart
+try:
+    import chart
+except Exception as _chart_import_err:
+    chart = None
+    print(f"chart module unavailable: {_chart_import_err}")
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
 SIGNALS_CHANNEL = os.getenv("SIGNALS_CHANNEL")
@@ -46,6 +50,9 @@ def send_channel_photo(photo_path, caption=""):
 
 
 def run_once():
+    if chart is None:
+        print("weekly_digest: chart module unavailable, skipping")
+        return
     try:
         with open(JOURNAL_FILE) as f:
             entries = json.load(f)

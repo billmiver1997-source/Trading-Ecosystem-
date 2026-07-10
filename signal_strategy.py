@@ -70,8 +70,10 @@ def _save_json(path, data):
         with open(tmp, "w") as f:
             json.dump(data, f)
         os.replace(tmp, path)
+        return True
     except Exception as e:
         print(f"save {path} error: {e}")
+        return False
 
 
 def get_session_label():
@@ -182,7 +184,7 @@ def find_setup(df, name):
     bear_trend = ema50.iloc[i] < ema200.iloc[i]
 
     pull_low = low.iloc[i - 1]; pull_high = high.iloc[i - 1]
-    tol = a * 0.5
+    tol = atr.iloc[i - 1] * 0.5  # use pullback bar's own ATR for proximity tolerance
 
     if bull_trend:
         touched = pull_low <= ema20.iloc[i - 1] + tol
@@ -313,7 +315,7 @@ def get_news_blocked_currencies():
             print(f"News filter blocking currencies: {blocked}")
         return blocked
     except Exception as e:
-        print(f"News filter error: {e}")
+        print(f"News filter DISABLED (fetch failed: {e}) — all pairs unblocked this cycle")
         return set()
 
 
@@ -390,7 +392,8 @@ def main():
                         continue
                     # Register trade and dedup only after confirmed delivery; exclusive lock
                     # to prevent a race with a simultaneously restarted second instance.
-                    add_trade(name, setup, signal_message_id=msg_id)
+                    # add_trade() is called INSIDE the lock so a concurrent process that
+                    # wins the race on dedup cannot also race on writing the trade entry.
                     with open(LAST_SIGNAL_LOCK_PATH, "a") as _lf:
                         fcntl.flock(_lf, fcntl.LOCK_EX)
                         try:
@@ -400,7 +403,12 @@ def main():
                             if last_signals.get(dedup_key, {}).get("confirm_bar_time") == setup["confirm_bar_time"]:
                                 continue
                             last_signals[dedup_key] = {"time": time.time(), "confirm_bar_time": setup["confirm_bar_time"]}
-                            _save_json(LAST_SIGNAL_FILE, last_signals)
+                            # Only add the trade if dedup write succeeds; a failed write
+                            # would leave no dedup entry, causing a repeated signal next cycle.
+                            if _save_json(LAST_SIGNAL_FILE, last_signals):
+                                add_trade(name, setup, signal_message_id=msg_id)
+                            else:
+                                print(f"Dedup write failed for {name} — trade not recorded to prevent repeat signal")
                         finally:
                             fcntl.flock(_lf, fcntl.LOCK_UN)
                     print(f"Signal sent: {name} {setup['bias']} entry:{setup['price']} sl:{setup['sl']} tp:{setup['tp']} msg_id:{msg_id}")

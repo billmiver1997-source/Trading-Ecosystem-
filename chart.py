@@ -202,7 +202,7 @@ def make_result_chart(name, symbol, signal, entry, sl, tp, entry_time, result_la
         return None
 
 
-def make_equity_chart(journal_entries, rr=1.5):
+def make_equity_chart(journal_entries, rr=2.0):
     """Cumulative-R equity curve + drawdown from journal.json entries. Each entry's
     "result" (WIN/LOSS/BE) is converted to its R multiple rather than reusing the
     raw "pips" field, since pip size differs by instrument (FX vs XAU vs BTC)."""
@@ -304,7 +304,7 @@ def make_weekly_collage(entries):
     wins = sum(1 for _, e in thumbs if e["result"] == "WIN")
     losses = sum(1 for _, e in thumbs if e["result"] == "LOSS")
     bes = sum(1 for _, e in thumbs if e["result"] == "BE")
-    net_r = sum(1.5 if e["result"] == "WIN" else (-1.0 if e["result"] == "LOSS" else 0.0) for _, e in thumbs)
+    net_r = sum(2.0 if e["result"] == "WIN" else (-1.0 if e["result"] == "LOSS" else 0.0) for _, e in thumbs)
 
     header_font = _load_font(28)
     header_text = f"WEEKLY DIGEST — {len(thumbs)} trades  |  {wins}W {losses}L {bes}BE  |  Net {net_r:+.1f}R"

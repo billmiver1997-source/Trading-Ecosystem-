@@ -64,7 +64,9 @@ def send_channel_photo(photo_path, caption=""):
 
 
 def send_all(msg):
-    for chat_id in load_users():
+    # users.json may contain list of strings (listener.py) or list of dicts (main_bot.py)
+    for item in load_users():
+        chat_id = item["id"] if isinstance(item, dict) else item
         try:
             r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
                 json={"chat_id": chat_id, "text": msg[:4096]}, timeout=10)
@@ -114,7 +116,7 @@ def backtest_pair(name, symbol):
         bull_trend = ema50.iloc[i] > ema200.iloc[i]
         bear_trend = ema50.iloc[i] < ema200.iloc[i]
         pull_low = low.iloc[i-1]; pull_high = high.iloc[i-1]
-        tol = a * 0.5
+        tol = atr.iloc[i - 1] * 0.5  # use pullback bar's own ATR for proximity tolerance
 
         if bull_trend:
             touched = pull_low <= ema20.iloc[i-1] + tol

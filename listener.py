@@ -279,7 +279,7 @@ def _fetch_analysis(pair_name):
         prompt = style + data_context
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=700,
+            max_tokens=1000,
             system=system_prompt,
             messages=[{"role":"user","content":prompt}]
         )
@@ -491,7 +491,7 @@ def handle_message(chat_id, text, username, first_name=""):
             headers = ["📰 LATEST NEWS", "📡 MARKET INTELLIGENCE", "🗞 BREAKING MARKET NEWS", "📊 MARKET UPDATE"]
             message = client.messages.create(
                 model="claude-haiku-4-5-20251001",
-                max_tokens=700,
+                max_tokens=1000,
                 system=style,
                 messages=[{"role":"user","content":"Headlines:\n\n"+news_text}]
             )
@@ -505,7 +505,7 @@ def handle_message(chat_id, text, username, first_name=""):
 
     elif text_lower.startswith("/analysis "):
         pair_input = text_lower[len("/analysis "):].strip()
-        pair_name = ALIASES.get(pair_input, pair_input.upper())
+        pair_name = ALIASES.get(pair_input) or next((k for k in SYMBOLS if k.lower() == pair_input), pair_input.upper())
         send_typing(chat_id)
         send_message(chat_id, get_analysis(pair_name), main_menu())
 
@@ -617,7 +617,7 @@ def handle_message(chat_id, text, username, first_name=""):
         send_typing(chat_id)
         try:
             pair_input = (text_lower[len("/mtf "):] if text_lower.startswith("/mtf ") else text_lower[len("mtf "):]).strip()
-            pair_name = ALIASES.get(pair_input, pair_input.upper())
+            pair_name = ALIASES.get(pair_input) or next((k for k in SYMBOLS if k.lower() == pair_input), pair_input.upper())
             symbol = SYMBOLS.get(pair_name)
             if not symbol:
                 send_message(chat_id, "Pair not found. Example: mtf EURUSD", main_menu())
@@ -660,7 +660,7 @@ def handle_message(chat_id, text, username, first_name=""):
                 if not results:
                     send_message(chat_id, "📊 MTF ANALYSIS\n"+pair_name+"\n\n⚠️ Insufficient data for all timeframes.", main_menu())
                     return
-                biases = [r.split(":")[1].split("|")[0].strip() for r in results]
+                biases = [r.split(":", 1)[1].split("|")[0].strip() for r in results]
                 # Only declare ALIGNED when 2+ TFs agree on a non-neutral direction
                 non_neutral = [b for b in biases if "NEUTRAL" not in b]
                 overall = ("🟢 ALIGNED - Strong signal!" if (len(set(non_neutral)) == 1 and len(non_neutral) >= 2)
