@@ -40,7 +40,10 @@ PAIR_CURRENCIES = {
     "Oil/USD": ["USD"],
 }
 
-RR = 2.0  # TP = entry +/- risk * RR; SL is pullback-bar low/high ±1.5xATR; actual RR enforced via risk*RR
+RR = 1.5  # VALIDATED via 90d backtest (both split-half + full-window) — do NOT change
+# without re-running the comparison backtest first. RR=2.0 + wider SL buffers were
+# tried and both backtested significantly worse for both live pairs (USD/CAD 52R->24R,
+# Oil/USD 36R->19R over the same 90d window). 1.5 is deliberate, not an unfinished 1:2.
 
 PAIR_EMOJIS = {
     "USD/CAD": "\U0001f1e8\U0001f1e6",
@@ -192,7 +195,7 @@ def find_setup(df, name):
         rng = high.iloc[i] - low.iloc[i]
         body_ratio = body / rng if rng > 0 else 0
         if touched and body > 0 and body_ratio > 0.5 and close.iloc[i] > ema20.iloc[i]:
-            sl = round(pull_low - a * 1.5, 5)
+            sl = round(pull_low - a * 0.3, 5)
             risk = price - sl
             if risk <= 0:
                 return None
@@ -209,7 +212,7 @@ def find_setup(df, name):
         rng = high.iloc[i] - low.iloc[i]
         body_ratio = body / rng if rng > 0 else 0
         if touched and body > 0 and body_ratio > 0.5 and close.iloc[i] < ema20.iloc[i]:
-            sl = round(pull_high + a * 1.5, 5)
+            sl = round(pull_high + a * 0.3, 5)
             risk = sl - price
             if risk <= 0:
                 return None

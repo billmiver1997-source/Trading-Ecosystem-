@@ -30,7 +30,8 @@ PAIRS = {
     "Oil/USD": "CL=F",
 }
 
-RR = 2.0  # matches signal_strategy.RR (1.5x ATR SL, 3x ATR TP = 1:2 R:R)
+RR = 1.5  # matches signal_strategy.RR — VALIDATED via 90d backtest, do not
+# change without re-running the comparison first (see signal_strategy.py's RR comment).
 
 
 def load_users():
@@ -125,7 +126,7 @@ def backtest_pair(name, symbol):
             body_ratio = body / rng if rng > 0 else 0
             if touched and body > 0 and body_ratio > 0.5 and close.iloc[i] > ema20.iloc[i] and i+1 < n:
                 entry = open_.iloc[i+1]
-                sl = pull_low - a * 1.5
+                sl = pull_low - a * 0.3
                 risk = entry - sl
                 if risk <= 0:
                     continue
@@ -151,7 +152,7 @@ def backtest_pair(name, symbol):
             body_ratio = body / rng if rng > 0 else 0
             if touched and body > 0 and body_ratio > 0.5 and close.iloc[i] < ema20.iloc[i] and i+1 < n:
                 entry = open_.iloc[i+1]
-                sl = pull_high + a * 1.5
+                sl = pull_high + a * 0.3
                 risk = sl - entry
                 if risk <= 0:
                     continue
