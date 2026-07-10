@@ -200,6 +200,36 @@ def collect_news():
             combined.append(item)
     return combined[:40]
 
+SEEN_FILE = "/root/tradingbot/news_seen.json"
+SEEN_TTL_HOURS = 20  # just under a full day, so a still-developing story can
+                      # resurface once daily instead of never, but not every
+                      # 3-4h slot — the RSS feeds don't refresh that often, so
+                      # without this the same top headline (and its photo)
+                      # was repeating across consecutive scheduled updates.
+
+def _load_seen():
+    if os.path.exists(SEEN_FILE):
+        try:
+            with open(SEEN_FILE) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, ValueError, OSError) as e:
+            print(f"load seen error: {e}")
+    return {}
+
+def _save_seen(seen):
+    tmp = SEEN_FILE + ".tmp"
+    try:
+        with open(tmp, "w") as f:
+            json.dump(seen, f)
+        os.replace(tmp, SEEN_FILE)
+    except Exception as e:
+        print(f"save seen error: {e}")
+
+def _split_fresh(items, seen):
+    cutoff = time.time() - SEEN_TTL_HOURS * 3600
+    fresh = [it for it in items if seen.get(it[0], 0) < cutoff]
+    return fresh
+
 REPORT_STYLES = [
     {
         "system": "You are a sharp forex news editor. Write 5 punchy bullet points for traders. Each under 15 words. Start each with a relevant emoji. No headers.",
@@ -286,7 +316,14 @@ def main():
             if hour in SCHEDULE and minute < 10 and send_key not in sent_today:
                 now_str = get_greece_time()
                 print(f"Sending {hour}:00 update...")
-                items = collect_news()
+                all_items = collect_news()
+                seen = _load_seen()
+                fresh_items = _split_fresh(all_items, seen)
+                if fresh_items:
+                    items = fresh_items
+                else:
+                    print("No fresh headlines since last update — reusing existing coverage")
+                    items = all_items
                 if items:
                     report, top_links = create_report(items)
                     if report:
@@ -312,6 +349,12 @@ def main():
                         photo = article_image or _next_photo("news", NEWS_IMAGES)
                         send_photo_channel(photo, caption=msg, parse_mode=parse_mode)
                         print(f"Sent {hour}:00 update!")
+                        now_t = time.time()
+                        for it in items:
+                            seen[it[0]] = now_t
+                        # Prune anything older than 2x the TTL so the file doesn't grow forever
+                        seen = {k: v for k, v in seen.items() if now_t - v < SEEN_TTL_HOURS * 3600 * 2}
+                        _save_seen(seen)
                 sent_today[send_key] = True  # mark attempted regardless to prevent duplicate sends
                 time.sleep(600)
                 continue
