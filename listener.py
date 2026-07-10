@@ -164,15 +164,6 @@ def send_typing(chat_id):
     except Exception as e:
         print(f"send_typing error: {e}")
 
-def inline_main_menu():
-    # Return a plain dict — requests.post(json=...) handles serialization itself;
-    # wrapping in json.dumps() would double-encode this as a string, breaking Telegram.
-    return {"inline_keyboard": [
-        [{"text": "📊 Analysis", "callback_data": "cmd_analysis"}, {"text": "🧠 Sentiment", "callback_data": "cmd_sentiment"}],
-        [{"text": "📅 Calendar", "callback_data": "cmd_calendar"}, {"text": "📋 Status", "callback_data": "cmd_status"}],
-        [{"text": "🌍 News", "callback_data": "cmd_news"}],
-    ]}
-
 def main_menu():
     return {
         "keyboard": [
@@ -382,7 +373,11 @@ def handle_message(chat_id, text, username, first_name=""):
             fcntl.flock(_lf, fcntl.LOCK_EX)
             try:
                 users = load_users()
-                if str(chat_id) not in users:
+                # users.json may be a mixed list (strings from this bot, dicts from
+                # main_bot.py). Normalise to string IDs before checking membership so
+                # we don't append duplicate string entries for existing dict entries.
+                existing_ids = {item.get("id", item) if isinstance(item, dict) else item for item in users}
+                if str(chat_id) not in existing_ids:
                     users.append(str(chat_id))
                     save_users(users)
             finally:

@@ -144,6 +144,9 @@ def main():
                     sent_today = today
                     print("Calendar sent! "+str(len(events))+" events")
                     time.sleep(600)
+                else:
+                    # send failed — sleep to avoid spinning hot in the 8:00-8:09 window
+                    time.sleep(60)
             else:
                 time.sleep(300)
 

@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 load_dotenv("/root/tradingbot/.env")
 
 import asyncio
+import fcntl
 import logging
 import json
 import anthropic
@@ -44,27 +45,35 @@ def save_users(users):
 def track_user(user, bot_name="main"):
     tz = pytz.timezone("Europe/Athens")
     now = datetime.now(tz).strftime("%d/%m/%Y %H:%M")
-    users = load_users()
     uid = str(user.id)
-    is_new = uid not in users
-    if is_new:
-        users[uid] = {
-            "id": uid,
-            "username": "@"+user.username if user.username else "no_username",
-            "first_name": user.first_name or "",
-            "last_name": user.last_name or "",
-            "first_seen": now,
-            "last_seen": now,
-            "visits": 1,
-            "bot": bot_name
-        }
-    else:
-        users[uid]["last_seen"] = now
-        users[uid]["visits"] = users[uid].get("visits", 0) + 1
-        users[uid]["username"] = "@"+user.username if user.username else "no_username"
-        users[uid]["first_name"] = user.first_name or ""
-    save_users(users)
-    return is_new, users[uid]
+    # Use the same advisory lock file that listener.py uses so concurrent writes
+    # from both bots don't interleave and corrupt users.json.
+    lock_path = USERS_FILE + ".lock"
+    with open(lock_path, "a") as _lf:
+        fcntl.flock(_lf, fcntl.LOCK_EX)
+        try:
+            users = load_users()
+            is_new = uid not in users
+            if is_new:
+                users[uid] = {
+                    "id": uid,
+                    "username": "@"+user.username if user.username else "no_username",
+                    "first_name": user.first_name or "",
+                    "last_name": user.last_name or "",
+                    "first_seen": now,
+                    "last_seen": now,
+                    "visits": 1,
+                    "bot": bot_name
+                }
+            else:
+                users[uid]["last_seen"] = now
+                users[uid]["visits"] = users[uid].get("visits", 0) + 1
+                users[uid]["username"] = "@"+user.username if user.username else "no_username"
+                users[uid]["first_name"] = user.first_name or ""
+            save_users(users)
+            return is_new, users[uid]
+        finally:
+            fcntl.flock(_lf, fcntl.LOCK_UN)
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 # httpx/httpcore log each request URL at INFO, which embeds the bot token
 # (https://api.telegram.org/bot<TOKEN>/...) directly into the system journal.
