@@ -11,8 +11,14 @@ import pytz
 from datetime import datetime
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
+if not TELEGRAM_TOKEN:
+    raise RuntimeError("TELEGRAM_TOKEN_SIGNAL is not set in environment")
 CHANNEL_ID = os.getenv("TELEGRAM_UPDATES_CHANNEL")
+if not CHANNEL_ID:
+    raise RuntimeError("TELEGRAM_UPDATES_CHANNEL is not set in environment")
 ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY")
+if not ANTHROPIC_KEY:
+    print("Warning: ANTHROPIC_API_KEY not set — AI update generation will be unavailable")
 IMAGES_DIR = "/root/tradingbot/images"
 _photo_ids = {}
 

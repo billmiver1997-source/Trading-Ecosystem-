@@ -14,8 +14,14 @@ from datetime import datetime, timedelta
 import pytz
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
+if not TELEGRAM_TOKEN:
+    raise RuntimeError("TELEGRAM_TOKEN_SIGNAL is not set in environment")
 CHANNEL_ID = os.getenv("TELEGRAM_NEWS_CHANNEL")
+if not CHANNEL_ID:
+    raise RuntimeError("TELEGRAM_NEWS_CHANNEL is not set in environment")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+if not ANTHROPIC_API_KEY:
+    print("Warning: ANTHROPIC_API_KEY not set — AI news summaries will be unavailable")
 IMAGES_DIR = "/root/tradingbot/images"
 CURSORS_FILE = "/root/tradingbot/cursors_news.json"
 NEWS_IMAGES = ["news.jpg", "news_2.jpg", "news_3.jpg", "news_4.jpg"]
@@ -300,7 +306,18 @@ def main():
                                 safe_url = _html.escape(url, quote=True)
                                 links_section += f'• <a href="{safe_url}">{_html.escape(short)}</a>\n'
                             links_str = links_section.rstrip()
-                            # Clamp base so base+links never exceeds 1024 chars
+                            # Ensure links_str alone never exceeds 700 chars so base always
+                            # gets at least 324 chars and Telegram's 1024-cap never truncates
+                            # mid HTML-tag (which would cause Telegram to reject the message).
+                            if len(links_str) > 700:
+                                links_section = "\n\n📎 Read more:\n"
+                                for _t, _u in top_links:
+                                    _short = _t[:55]+"…" if len(_t) > 55 else _t
+                                    _line = f'• <a href="{_html.escape(_u, quote=True)}">{_html.escape(_short)}</a>\n'
+                                    if len(links_section) + len(_line) > 700:
+                                        break
+                                    links_section += _line
+                                links_str = links_section.rstrip()
                             max_base = max(0, 1024 - len(links_str))
                             msg = base[:max_base] + links_str
                             parse_mode = "HTML"

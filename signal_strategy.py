@@ -40,7 +40,7 @@ PAIR_CURRENCIES = {
     "Oil/USD": ["USD"],
 }
 
-RR = 2.0  # TP = entry +/- risk * RR; 1.5x ATR SL + 3x ATR TP = 1:2 risk-reward
+RR = 2.0  # TP = entry +/- risk * RR; SL is pullback-bar low/high ±1.5xATR; actual RR enforced via risk*RR
 
 PAIR_EMOJIS = {
     "USD/CAD": "\U0001f1e8\U0001f1e6",
@@ -395,6 +395,10 @@ def main():
                         fcntl.flock(_lf, fcntl.LOCK_EX)
                         try:
                             last_signals = _load_json(LAST_SIGNAL_FILE, {})
+                            # Re-check under exclusive lock: a concurrent process may have
+                            # already written this dedup entry between our initial check and now.
+                            if last_signals.get(dedup_key, {}).get("confirm_bar_time") == setup["confirm_bar_time"]:
+                                continue
                             last_signals[dedup_key] = {"time": time.time(), "confirm_bar_time": setup["confirm_bar_time"]}
                             _save_json(LAST_SIGNAL_FILE, last_signals)
                         finally:

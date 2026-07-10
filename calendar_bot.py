@@ -10,8 +10,14 @@ from bs4 import BeautifulSoup
 import pytz
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
+if not TELEGRAM_TOKEN:
+    raise RuntimeError("TELEGRAM_TOKEN_SIGNAL is not set in environment")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+if not ANTHROPIC_API_KEY:
+    print("Warning: ANTHROPIC_API_KEY not set — AI calendar summaries will be unavailable")
 CHANNEL_ID = os.getenv("TELEGRAM_NEWS_CHANNEL")
+if not CHANNEL_ID:
+    raise RuntimeError("TELEGRAM_NEWS_CHANNEL is not set in environment")
 
 def send_channel(msg):
     try:

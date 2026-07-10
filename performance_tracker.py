@@ -107,7 +107,9 @@ def _append_journal(entry):
             fcntl.flock(_lf, fcntl.LOCK_UN)
 
 def send_all(msg):
-    for chat_id in load_users():
+    # users.json may contain list of strings (from listener.py) or list of dicts (from main_bot.py)
+    for item in load_users():
+        chat_id = item["id"] if isinstance(item, dict) else item
         try:
             r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
                 json={"chat_id": chat_id, "text": msg[:4000]}, timeout=10)
@@ -298,13 +300,13 @@ def _check_trades_inner(price_cache):
         dur = f"{open_mins//60}h {open_mins%60}min" if open_mins >= 60 else f"{open_mins}min"
 
         if result == "WIN":
+            _is_raw = any(k in name for k in ("XAU", "BTC", "SOL", "Silver", "Oil", "Copper"))
+            pips_display = round(pips * (100 if "JPY" in name else 10000), 1) if not _is_raw else round(pips, 4)
             stats["wins"] += 1
-            stats["total_pips"] += pips
+            stats["total_pips"] += pips_display  # store scaled pips, not raw price diff
             pair_s["wins"] += 1
             total = stats["wins"] + stats["losses"]
             winrate = round((stats["wins"] / total) * 100, 1) if total > 0 else 0
-            _is_raw = any(k in name for k in ("XAU", "BTC", "SOL", "Silver", "Oil", "Copper"))
-            pips_display = round(pips * (100 if "JPY" in name else 10000), 1) if not _is_raw else round(pips, 4)
             pips_unit = "pips" if not _is_raw else ""
             msg = (
                 "\U0001f3af TAKE PROFIT HIT! \U0001f4b0\n\n"
@@ -335,13 +337,13 @@ def _check_trades_inner(price_cache):
                               "symbol":symbol,"entry":entry,"sl":sl,"tp":tp,"entry_time":entry_time,"close_time":time.time()})
 
         else:  # LOSS
+            _is_raw = any(k in name for k in ("XAU", "BTC", "SOL", "Silver", "Oil", "Copper"))
+            pips_display = round(pips * (100 if "JPY" in name else 10000), 1) if not _is_raw else round(pips, 4)
             stats["losses"] += 1
-            stats["total_pips"] -= pips
+            stats["total_pips"] -= pips_display  # store scaled pips, not raw price diff
             pair_s["losses"] += 1
             total = stats["wins"] + stats["losses"]
             winrate = round((stats["wins"] / total) * 100, 1) if total > 0 else 0
-            _is_raw = any(k in name for k in ("XAU", "BTC", "SOL", "Silver", "Oil", "Copper"))
-            pips_display = round(pips * (100 if "JPY" in name else 10000), 1) if not _is_raw else round(pips, 4)
             pips_unit = "pips" if not _is_raw else ""
             msg = (
                 "\U0000274c STOP LOSS HIT\n\n"

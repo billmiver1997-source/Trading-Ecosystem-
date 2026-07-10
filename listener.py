@@ -504,7 +504,7 @@ def handle_message(chat_id, text, username, first_name=""):
         send_message(chat_id, "Choose a pair:", pairs_menu())
 
     elif text_lower.startswith("/analysis "):
-        pair_input = text_lower.replace("/analysis ","").strip()
+        pair_input = text_lower[len("/analysis "):].strip()
         pair_name = ALIASES.get(pair_input, pair_input.upper())
         send_typing(chat_id)
         send_message(chat_id, get_analysis(pair_name), main_menu())
@@ -616,7 +616,7 @@ def handle_message(chat_id, text, username, first_name=""):
     elif text_lower.startswith("/mtf ") or text_lower.startswith("mtf "):
         send_typing(chat_id)
         try:
-            pair_input = text_lower.replace("/mtf ","").replace("mtf ","").strip()
+            pair_input = (text_lower[len("/mtf "):] if text_lower.startswith("/mtf ") else text_lower[len("mtf "):]).strip()
             pair_name = ALIASES.get(pair_input, pair_input.upper())
             symbol = SYMBOLS.get(pair_name)
             if not symbol:
@@ -660,9 +660,11 @@ def handle_message(chat_id, text, username, first_name=""):
                 if not results:
                     send_message(chat_id, "📊 MTF ANALYSIS\n"+pair_name+"\n\n⚠️ Insufficient data for all timeframes.", main_menu())
                     return
-                agreement = len(set([r.split(":")[1].split("|")[0].strip() for r in results]))
-                # Need at least 2 TFs to declare alignment; a single TF result is never "aligned"
-                overall = "🟢 ALIGNED - Strong signal!" if (agreement == 1 and len(results) >= 2) else "🟡 MIXED - Wait for alignment"
+                biases = [r.split(":")[1].split("|")[0].strip() for r in results]
+                # Only declare ALIGNED when 2+ TFs agree on a non-neutral direction
+                non_neutral = [b for b in biases if "NEUTRAL" not in b]
+                overall = ("🟢 ALIGNED - Strong signal!" if (len(set(non_neutral)) == 1 and len(non_neutral) >= 2)
+                           else "🟡 MIXED - Wait for alignment")
                 tz = pytz.timezone("Europe/Athens")
                 now = datetime.now(tz).strftime("%d/%m/%Y %H:%M")
                 msg = "📊 MTF ANALYSIS\n"+pair_name+" | "+now+"\n\n"
@@ -1009,7 +1011,8 @@ def _process_update(update):
             # "Menu restored:" message that _ensure_keyboard would otherwise prepend.
             raw_cmd = text.strip().lower().split("@")[0] if text else ""
             if raw_cmd in ("/start", "start"):
-                _keyboard_sent.add(chat_id)
+                with _keyboard_sent_lock:
+                    _keyboard_sent.add(chat_id)
             _ensure_keyboard(chat_id)
         if text and chat_id:
             handle_message(chat_id, text, username, first_name)

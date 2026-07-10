@@ -25,7 +25,7 @@ def load_users():
             with open(USERS_FILE) as f:
                 data = json.load(f)
                 # Migration: αν είναι παλιά μορφή (list of strings)
-                if data and isinstance(data[0], str):
+                if isinstance(data, list) and data and isinstance(data[0], str):
                     return {}
                 return {u["id"]: u for u in data} if isinstance(data, list) else data
         except (json.JSONDecodeError, ValueError, OSError) as e:
@@ -194,10 +194,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(WELCOME, reply_markup=main_menu())
     try:
         user = update.effective_user
-        name = user.first_name or ""
-        username = "@"+user.username if user.username else "no username"
-        notify = "\U0001f514 NEW USER on Nova Main Bot!\n\nName: "+name+" | "+username+"\nID: "+str(user.id)
-        await context.bot.send_message(chat_id=OWNER_ID, text=notify)
+        is_new, _ = await asyncio.to_thread(track_user, user)
+        if is_new:
+            name = user.first_name or ""
+            username = "@"+user.username if user.username else "no username"
+            notify = "\U0001f514 NEW USER on Nova Main Bot!\n\nName: "+name+" | "+username+"\nID: "+str(user.id)
+            await context.bot.send_message(chat_id=OWNER_ID, text=notify)
     except Exception as e:
         print(f"start notify error: {e}")
 
