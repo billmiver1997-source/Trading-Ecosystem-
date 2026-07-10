@@ -95,7 +95,7 @@ def _append_journal(entry):
                 try:
                     with open(JOURNAL_FILE) as f:
                         entries = json.load(f)
-                except (json.JSONDecodeError, ValueError) as e:
+                except (json.JSONDecodeError, ValueError, OSError) as e:
                     print(f"journal load error: {e}")
             entries.append(entry)
             entries = entries[-200:]

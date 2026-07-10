@@ -17,6 +17,8 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
+if not TELEGRAM_TOKEN:
+    raise RuntimeError("TELEGRAM_TOKEN_SIGNAL is not set in environment")
 USERS_FILE = "/root/tradingbot/users.json"
 PROFILES_FILE = "/root/tradingbot/user_profiles.json"
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
@@ -78,7 +80,7 @@ def load_users():
         try:
             with open(USERS_FILE) as f:
                 return json.load(f)
-        except (json.JSONDecodeError, ValueError) as e:
+        except (json.JSONDecodeError, ValueError, OSError) as e:
             print(f"load_users JSON error: {e}")
     return []
 
