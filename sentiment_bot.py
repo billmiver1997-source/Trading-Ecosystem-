@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv("/root/tradingbot/.env")
 
+import random
 import requests
 import time
 import anthropic
@@ -10,8 +11,14 @@ from datetime import datetime
 import pytz
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
+if not TELEGRAM_TOKEN:
+    raise RuntimeError("TELEGRAM_TOKEN_SIGNAL is not set in environment")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+if not ANTHROPIC_API_KEY:
+    print("Warning: ANTHROPIC_API_KEY not set — AI sentiment commentary will be unavailable")
 CHANNEL_ID = os.getenv("TELEGRAM_NEWS_CHANNEL")
+if not CHANNEL_ID:
+    raise RuntimeError("TELEGRAM_NEWS_CHANNEL is not set in environment")
 IMAGES_DIR = "/root/tradingbot/images"
 _photo_ids = {}
 
@@ -121,7 +128,6 @@ SENTIMENT_HEADERS = [
 ]
 
 def format_message(fg, dxy, gold, vix):
-    import random
     tz = pytz.timezone("Europe/Athens")
     now = datetime.now(tz).strftime("%d/%m/%Y %H:%M")
 

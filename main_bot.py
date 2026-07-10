@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv("/root/tradingbot/.env")
 
+import asyncio
 import logging
 import json
 import anthropic
@@ -12,6 +13,8 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKe
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
 TOKEN = os.getenv("TELEGRAM_TOKEN_MAIN")
+if not TOKEN:
+    raise RuntimeError("TELEGRAM_TOKEN_MAIN is not set in environment")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 OWNER_ID = 8626233751
 USERS_FILE = "/root/tradingbot/users.json"
@@ -22,7 +25,7 @@ def load_users():
             with open(USERS_FILE) as f:
                 data = json.load(f)
                 # Migration: αν είναι παλιά μορφή (list of strings)
-                if data and isinstance(data[0], str):
+                if isinstance(data, list) and data and isinstance(data[0], str):
                     return {}
                 return {u["id"]: u for u in data} if isinstance(data, list) else data
         except (json.JSONDecodeError, ValueError, OSError) as e:
@@ -191,10 +194,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(WELCOME, reply_markup=main_menu())
     try:
         user = update.effective_user
-        name = user.first_name or ""
-        username = "@"+user.username if user.username else "no username"
-        notify = "\U0001f514 NEW USER on Nova Main Bot!\n\nName: "+name+" | "+username+"\nID: "+str(user.id)
-        await context.bot.send_message(chat_id=OWNER_ID, text=notify)
+        is_new, _ = await asyncio.to_thread(track_user, user)
+        if is_new:
+            name = user.first_name or ""
+            username = "@"+user.username if user.username else "no username"
+            notify = "\U0001f514 NEW USER on Nova Main Bot!\n\nName: "+name+" | "+username+"\nID: "+str(user.id)
+            await context.bot.send_message(chat_id=OWNER_ID, text=notify)
     except Exception as e:
         print(f"start notify error: {e}")
 
@@ -227,7 +232,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Choose an option:", reply_markup=broker_menu())
     elif text == "\U0001f4ca Market Overview":
         await update.message.reply_text("\U0001f504 Loading...", reply_markup=main_menu())
-        overview = get_market_overview()
+        overview = await asyncio.to_thread(get_market_overview)
         await update.message.reply_text(overview, reply_markup=main_menu())
 
     elif text == "\U0001f4f2 Our Community":
@@ -270,40 +275,40 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(msg, reply_markup=broker_links())
     elif text == "\U0001f4d6 Forex Basics":
         await update.message.reply_text("\U0001f504 Loading...", reply_markup=edu_menu())
-        await update.message.reply_text(get_education("forex"), reply_markup=edu_menu())
+        await update.message.reply_text(await asyncio.to_thread(get_education, "forex"), reply_markup=edu_menu())
     elif text == "\U0001f4d6 Crypto Basics":
         await update.message.reply_text("\U0001f504 Loading...", reply_markup=edu_menu())
-        await update.message.reply_text(get_education("crypto"), reply_markup=edu_menu())
+        await update.message.reply_text(await asyncio.to_thread(get_education, "crypto"), reply_markup=edu_menu())
     elif text == "\U0001f4d6 What is CFD?":
         await update.message.reply_text("\U0001f504 Loading...", reply_markup=edu_menu())
-        await update.message.reply_text(get_education("cfd"), reply_markup=edu_menu())
+        await update.message.reply_text(await asyncio.to_thread(get_education, "cfd"), reply_markup=edu_menu())
     elif text == "\U0001f4d6 What is SMC?":
         await update.message.reply_text("\U0001f504 Loading...", reply_markup=edu_menu())
-        await update.message.reply_text(get_education("smc"), reply_markup=edu_menu())
+        await update.message.reply_text(await asyncio.to_thread(get_education, "smc"), reply_markup=edu_menu())
     elif text == "\U0001f4d6 Risk Management":
         await update.message.reply_text("\U0001f504 Loading...", reply_markup=edu_menu())
-        await update.message.reply_text(get_education("risk"), reply_markup=edu_menu())
+        await update.message.reply_text(await asyncio.to_thread(get_education, "risk"), reply_markup=edu_menu())
     elif text == "\U0001f4d6 Indicators Guide":
         await update.message.reply_text("\U0001f504 Loading...", reply_markup=edu_menu())
-        await update.message.reply_text(get_education("indicators"), reply_markup=edu_menu())
+        await update.message.reply_text(await asyncio.to_thread(get_education, "indicators"), reply_markup=edu_menu())
     elif text == "\U0001f4d6 Chart Patterns":
         await update.message.reply_text("\U0001f504 Loading...", reply_markup=edu_menu())
-        await update.message.reply_text(get_education("patterns"), reply_markup=edu_menu())
+        await update.message.reply_text(await asyncio.to_thread(get_education, "patterns"), reply_markup=edu_menu())
     elif text == "\U0001f4d6 Trading Glossary":
         await update.message.reply_text("\U0001f504 Loading...", reply_markup=edu_menu())
-        await update.message.reply_text(get_education("glossary"), reply_markup=edu_menu())
+        await update.message.reply_text(await asyncio.to_thread(get_education, "glossary"), reply_markup=edu_menu())
     elif text == "\U0001f4d6 Crypto Trading":
         await update.message.reply_text("\U0001f504 Loading...", reply_markup=edu_menu())
-        await update.message.reply_text(get_education("cryptotrading"), reply_markup=edu_menu())
+        await update.message.reply_text(await asyncio.to_thread(get_education, "cryptotrading"), reply_markup=edu_menu())
     elif text == "\U0001f4d6 DeFi & Web3":
         await update.message.reply_text("\U0001f504 Loading...", reply_markup=edu_menu())
-        await update.message.reply_text(get_education("defi"), reply_markup=edu_menu())
+        await update.message.reply_text(await asyncio.to_thread(get_education, "defi"), reply_markup=edu_menu())
     elif text == "\U0001f4d6 Trading Psychology":
         await update.message.reply_text("\U0001f504 Loading...", reply_markup=edu_menu())
-        await update.message.reply_text(get_education("psychology"), reply_markup=edu_menu())
+        await update.message.reply_text(await asyncio.to_thread(get_education, "psychology"), reply_markup=edu_menu())
     elif text == "\U0001f4d6 How to Start":
         await update.message.reply_text("\U0001f504 Loading...", reply_markup=edu_menu())
-        await update.message.reply_text(get_education("howtostart"), reply_markup=edu_menu())
+        await update.message.reply_text(await asyncio.to_thread(get_education, "howtostart"), reply_markup=edu_menu())
 
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))

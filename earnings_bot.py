@@ -12,8 +12,12 @@ import csv
 import io
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
+if not TELEGRAM_TOKEN:
+    raise RuntimeError("TELEGRAM_TOKEN_SIGNAL is not set in environment")
 USERS_FILE = "/root/tradingbot/users.json"
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+if not ANTHROPIC_API_KEY:
+    print("Warning: ANTHROPIC_API_KEY not set — AI earnings summaries will be unavailable")
 ALPHA_KEY = os.getenv("ALPHA_VANTAGE_KEY")
 
 IMPORTANT_STOCKS = [
@@ -27,13 +31,15 @@ def load_users():
         try:
             with open(USERS_FILE) as f:
                 return json.load(f)
-        except (json.JSONDecodeError, ValueError) as e:
+        except (json.JSONDecodeError, ValueError, OSError) as e:
             print(f"load_users error: {e}")
     return []
 
 def send_all(msg):
     sent = 0
-    for chat_id in load_users():
+    # users.json may contain list of strings (listener.py) or list of dicts (main_bot.py)
+    for item in load_users():
+        chat_id = item["id"] if isinstance(item, dict) else item
         try:
             r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
                 json={"chat_id": chat_id, "text": msg[:4000]}, timeout=10)

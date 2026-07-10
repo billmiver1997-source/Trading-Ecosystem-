@@ -10,7 +10,11 @@ import time
 from datetime import datetime
 import pytz
 
-import chart
+try:
+    import chart
+except Exception as _chart_import_err:
+    chart = None
+    print(f"chart module unavailable: {_chart_import_err}")
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
 if not TELEGRAM_TOKEN:
@@ -26,7 +30,7 @@ PAIRS = {
     "Oil/USD": "CL=F",
 }
 
-RR = 1.5  # matches signal_strategy.RR
+RR = 2.0  # matches signal_strategy.RR (1.5x ATR SL, 3x ATR TP = 1:2 R:R)
 
 
 def load_users():
@@ -60,7 +64,9 @@ def send_channel_photo(photo_path, caption=""):
 
 
 def send_all(msg):
-    for chat_id in load_users():
+    # users.json may contain list of strings (listener.py) or list of dicts (main_bot.py)
+    for item in load_users():
+        chat_id = item["id"] if isinstance(item, dict) else item
         try:
             r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
                 json={"chat_id": chat_id, "text": msg[:4096]}, timeout=10)
@@ -82,11 +88,12 @@ def backtest_pair(name, symbol):
         return None
     if len(df) < 300:
         try:
-            df = yf.Ticker(symbol).history(period="180d", interval="1h")
+            df180 = yf.Ticker(symbol).history(period="180d", interval="1h")
+            # Only upgrade to the wider window if it actually has more bars
+            if len(df180) > len(df):
+                df = df180
         except Exception as e:
             print(f"backtest_pair 180d fallback error {name}: {e}")
-            if len(df) < 261:
-                return None
     if len(df) < 261:
         return None
 
@@ -109,7 +116,7 @@ def backtest_pair(name, symbol):
         bull_trend = ema50.iloc[i] > ema200.iloc[i]
         bear_trend = ema50.iloc[i] < ema200.iloc[i]
         pull_low = low.iloc[i-1]; pull_high = high.iloc[i-1]
-        tol = a * 0.5
+        tol = atr.iloc[i - 1] * 0.5  # use pullback bar's own ATR for proximity tolerance
 
         if bull_trend:
             touched = pull_low <= ema20.iloc[i-1] + tol
@@ -118,7 +125,7 @@ def backtest_pair(name, symbol):
             body_ratio = body / rng if rng > 0 else 0
             if touched and body > 0 and body_ratio > 0.5 and close.iloc[i] > ema20.iloc[i] and i+1 < n:
                 entry = open_.iloc[i+1]
-                sl = pull_low - a * 0.3
+                sl = pull_low - a * 1.5
                 risk = entry - sl
                 if risk <= 0:
                     continue
@@ -144,7 +151,7 @@ def backtest_pair(name, symbol):
             body_ratio = body / rng if rng > 0 else 0
             if touched and body > 0 and body_ratio > 0.5 and close.iloc[i] < ema20.iloc[i] and i+1 < n:
                 entry = open_.iloc[i+1]
-                sl = pull_high + a * 0.3
+                sl = pull_high + a * 1.5
                 risk = sl - entry
                 if risk <= 0:
                     continue
@@ -227,7 +234,7 @@ def run_backtest():
     except (json.JSONDecodeError, ValueError, OSError, FileNotFoundError) as e:
         print(f"journal load error for equity chart: {e}")
         journal_entries = []
-    if journal_entries:
+    if journal_entries and chart is not None:
         equity_path = chart.make_equity_chart(journal_entries, rr=RR)
         send_channel_photo(equity_path, caption="📈 Equity curve — all closed trades to date")
 

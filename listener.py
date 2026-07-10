@@ -17,22 +17,28 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
-ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID")
+if not TELEGRAM_TOKEN:
+    raise RuntimeError("TELEGRAM_TOKEN_SIGNAL is not set in environment")
 USERS_FILE = "/root/tradingbot/users.json"
 PROFILES_FILE = "/root/tradingbot/user_profiles.json"
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-OWNER_ID = "8626233751"
+OWNER_ID = os.getenv("OWNER_ID", "8626233751")
+
+if not ANTHROPIC_API_KEY:
+    print("Warning: ANTHROPIC_API_KEY not set — AI features (analysis, news) will be unavailable")
 
 _anthropic_client = None
+_anthropic_lock = Lock()
 _analysis_cache = {}  # pair_name -> (timestamp, result_text)
 _analysis_cache_lock = Lock()
 _ANALYSIS_TTL = 900   # 15 minutes
 
 def _get_anthropic():
     global _anthropic_client
-    if _anthropic_client is None:
-        _anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-    return _anthropic_client
+    with _anthropic_lock:
+        if _anthropic_client is None:
+            _anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        return _anthropic_client
 
 SYMBOLS = {
     "USD/CHF": "USDCHF=X", "AUD/USD": "AUDUSD=X", "EUR/USD": "EURUSD=X",
@@ -74,7 +80,7 @@ def load_users():
         try:
             with open(USERS_FILE) as f:
                 return json.load(f)
-        except (json.JSONDecodeError, ValueError) as e:
+        except (json.JSONDecodeError, ValueError, OSError) as e:
             print(f"load_users JSON error: {e}")
     return []
 
@@ -136,6 +142,8 @@ def get_updates(offset=None):
         return r.json()
     except Exception as e:
         print(f"get_updates error: {e}")
+        # Sleep before returning so a network outage doesn't spin the main loop at full speed
+        time.sleep(5)
         return {"result": []}
 
 def send_message(chat_id, text, reply_markup=None):
@@ -271,7 +279,7 @@ def _fetch_analysis(pair_name):
         prompt = style + data_context
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=700,
+            max_tokens=1000,
             system=system_prompt,
             messages=[{"role":"user","content":prompt}]
         )
@@ -454,7 +462,6 @@ def handle_message(chat_id, text, username, first_name=""):
     elif text_lower in ["🌍 news", "/news"]:
         send_typing(chat_id)
         try:
-            import feedparser
             tz = pytz.timezone("Europe/Athens")
             now_str = datetime.now(tz).strftime("%d/%m/%Y %H:%M")
             keywords = ["war","attack","fed","rate","inflation","trump","tariff","oil","gold","dollar","ukraine","iran","china","russia","market","crash","rally","ceasefire","ecb","boe","sanctions"]
@@ -484,7 +491,7 @@ def handle_message(chat_id, text, username, first_name=""):
             headers = ["📰 LATEST NEWS", "📡 MARKET INTELLIGENCE", "🗞 BREAKING MARKET NEWS", "📊 MARKET UPDATE"]
             message = client.messages.create(
                 model="claude-haiku-4-5-20251001",
-                max_tokens=700,
+                max_tokens=1000,
                 system=style,
                 messages=[{"role":"user","content":"Headlines:\n\n"+news_text}]
             )
@@ -497,8 +504,8 @@ def handle_message(chat_id, text, username, first_name=""):
         send_message(chat_id, "Choose a pair:", pairs_menu())
 
     elif text_lower.startswith("/analysis "):
-        pair_input = text_lower.replace("/analysis ","").strip()
-        pair_name = ALIASES.get(pair_input, pair_input.upper())
+        pair_input = text_lower[len("/analysis "):].strip()
+        pair_name = ALIASES.get(pair_input) or next((k for k in SYMBOLS if k.lower() == pair_input), pair_input.upper())
         send_typing(chat_id)
         send_message(chat_id, get_analysis(pair_name), main_menu())
 
@@ -609,8 +616,8 @@ def handle_message(chat_id, text, username, first_name=""):
     elif text_lower.startswith("/mtf ") or text_lower.startswith("mtf "):
         send_typing(chat_id)
         try:
-            pair_input = text_lower.replace("/mtf ","").replace("mtf ","").strip()
-            pair_name = ALIASES.get(pair_input, pair_input.upper())
+            pair_input = (text_lower[len("/mtf "):] if text_lower.startswith("/mtf ") else text_lower[len("mtf "):]).strip()
+            pair_name = ALIASES.get(pair_input) or next((k for k in SYMBOLS if k.lower() == pair_input), pair_input.upper())
             symbol = SYMBOLS.get(pair_name)
             if not symbol:
                 send_message(chat_id, "Pair not found. Example: mtf EURUSD", main_menu())
@@ -653,9 +660,11 @@ def handle_message(chat_id, text, username, first_name=""):
                 if not results:
                     send_message(chat_id, "📊 MTF ANALYSIS\n"+pair_name+"\n\n⚠️ Insufficient data for all timeframes.", main_menu())
                     return
-                agreement = len(set([r.split(":")[1].split("|")[0].strip() for r in results]))
-                # Need at least 2 TFs to declare alignment; a single TF result is never "aligned"
-                overall = "🟢 ALIGNED - Strong signal!" if (agreement == 1 and len(results) >= 2) else "🟡 MIXED - Wait for alignment"
+                biases = [r.split(":", 1)[1].split("|")[0].strip() for r in results]
+                # Only declare ALIGNED when 2+ TFs agree on a non-neutral direction
+                non_neutral = [b for b in biases if "NEUTRAL" not in b]
+                overall = ("🟢 ALIGNED - Strong signal!" if (len(set(non_neutral)) == 1 and len(non_neutral) >= 2)
+                           else "🟡 MIXED - Wait for alignment")
                 tz = pytz.timezone("Europe/Athens")
                 now = datetime.now(tz).strftime("%d/%m/%Y %H:%M")
                 msg = "📊 MTF ANALYSIS\n"+pair_name+" | "+now+"\n\n"
@@ -1002,7 +1011,8 @@ def _process_update(update):
             # "Menu restored:" message that _ensure_keyboard would otherwise prepend.
             raw_cmd = text.strip().lower().split("@")[0] if text else ""
             if raw_cmd in ("/start", "start"):
-                _keyboard_sent.add(chat_id)
+                with _keyboard_sent_lock:
+                    _keyboard_sent.add(chat_id)
             _ensure_keyboard(chat_id)
         if text and chat_id:
             handle_message(chat_id, text, username, first_name)
@@ -1028,13 +1038,17 @@ def _process_update(update):
         print(f"_process_update error: {e}")
 
 _keyboard_sent = set()  # chat_ids that already have the keyboard
+_keyboard_sent_lock = Lock()
 _update_executor = ThreadPoolExecutor(max_workers=20, thread_name_prefix="update")
 
 def _ensure_keyboard(chat_id):
     """Send keyboard to a chat if it hasn't received one since the last restart."""
-    if chat_id not in _keyboard_sent:
-        send_message(chat_id, "📋 Menu restored:", main_menu())
+    with _keyboard_sent_lock:
+        if chat_id in _keyboard_sent:
+            return
         _keyboard_sent.add(chat_id)
+    # Send outside the lock so we don't hold it during a network call
+    send_message(chat_id, "📋 Menu restored:", main_menu())
 
 def main():
     set_commands()

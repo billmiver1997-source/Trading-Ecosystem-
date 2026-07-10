@@ -11,13 +11,18 @@ import time
 from datetime import datetime
 import pytz
 
-import chart
+try:
+    import chart
+except Exception as _chart_import_err:
+    chart = None  # chart.py missing or broken — signals send as text only
+    print(f"chart module unavailable: {_chart_import_err}")
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
 SIGNALS_CHANNEL = os.getenv("SIGNALS_CHANNEL")
 if not TELEGRAM_TOKEN or not SIGNALS_CHANNEL:
     raise RuntimeError("TELEGRAM_TOKEN_SIGNAL and SIGNALS_CHANNEL must be set in .env")
 LAST_SIGNAL_FILE = "/root/tradingbot/last_signals_smc.json"
+LAST_SIGNAL_LOCK_PATH = LAST_SIGNAL_FILE + ".lock"
 
 # Strategy: HTF trend (EMA50/EMA200) + pullback to EMA20 + rejection confirmation candle.
 # Backtested on 90d of 1H data across all 11 previously-traded pairs (no lookahead —
@@ -35,7 +40,7 @@ PAIR_CURRENCIES = {
     "Oil/USD": ["USD"],
 }
 
-RR = 1.5  # TP = entry +/- risk * RR; produces a 1:1.5 risk-reward ratio
+RR = 2.0  # TP = entry +/- risk * RR; SL is pullback-bar low/high ±1.5xATR; actual RR enforced via risk*RR
 
 PAIR_EMOJIS = {
     "USD/CAD": "\U0001f1e8\U0001f1e6",
@@ -54,7 +59,7 @@ def _load_json(path, default):
         try:
             with open(path) as f:
                 return json.load(f)
-        except (json.JSONDecodeError, ValueError) as e:
+        except (json.JSONDecodeError, ValueError, OSError) as e:
             print(f"load {path} error: {e}")
     return default
 
@@ -65,8 +70,10 @@ def _save_json(path, data):
         with open(tmp, "w") as f:
             json.dump(data, f)
         os.replace(tmp, path)
+        return True
     except Exception as e:
         print(f"save {path} error: {e}")
+        return False
 
 
 def get_session_label():
@@ -119,8 +126,8 @@ def send_signal_photo(msg, photo_path):
         if photo_path and os.path.exists(photo_path):
             try:
                 os.remove(photo_path)
-            except OSError:
-                pass
+            except OSError as e:
+                print(f"Failed to delete temp chart file {photo_path}: {e}")
     return message_id
 
 
@@ -177,7 +184,7 @@ def find_setup(df, name):
     bear_trend = ema50.iloc[i] < ema200.iloc[i]
 
     pull_low = low.iloc[i - 1]; pull_high = high.iloc[i - 1]
-    tol = a * 0.5
+    tol = atr.iloc[i - 1] * 0.5  # use pullback bar's own ATR for proximity tolerance
 
     if bull_trend:
         touched = pull_low <= ema20.iloc[i - 1] + tol
@@ -185,7 +192,7 @@ def find_setup(df, name):
         rng = high.iloc[i] - low.iloc[i]
         body_ratio = body / rng if rng > 0 else 0
         if touched and body > 0 and body_ratio > 0.5 and close.iloc[i] > ema20.iloc[i]:
-            sl = round(pull_low - a * 0.3, 5)
+            sl = round(pull_low - a * 1.5, 5)
             risk = price - sl
             if risk <= 0:
                 return None
@@ -202,7 +209,7 @@ def find_setup(df, name):
         rng = high.iloc[i] - low.iloc[i]
         body_ratio = body / rng if rng > 0 else 0
         if touched and body > 0 and body_ratio > 0.5 and close.iloc[i] < ema20.iloc[i]:
-            sl = round(pull_high + a * 0.3, 5)
+            sl = round(pull_high + a * 1.5, 5)
             risk = sl - price
             if risk <= 0:
                 return None
@@ -308,13 +315,12 @@ def get_news_blocked_currencies():
             print(f"News filter blocking currencies: {blocked}")
         return blocked
     except Exception as e:
-        print(f"News filter error: {e}")
+        print(f"News filter DISABLED (fetch failed: {e}) — all pairs unblocked this cycle")
         return set()
 
 
 def main():
     print("Pullback strategy started (1H timeframe, USD/CAD + Oil/USD)...")
-    last_signals = _load_json(LAST_SIGNAL_FILE, {})
     tripped_alerted = set()
     news_blocked: set = set()
 
@@ -362,14 +368,20 @@ def main():
 
                     signal = "BUY" if setup["bias"] == "BULLISH" else "SELL"
                     dedup_key = f"{name}_{signal}"
-                    if last_signals.get(dedup_key, {}).get("confirm_bar_time") == setup["confirm_bar_time"]:
+
+                    # Fresh disk read under shared lock to catch signals from a concurrent process
+                    with open(LAST_SIGNAL_LOCK_PATH, "a") as _lf:
+                        fcntl.flock(_lf, fcntl.LOCK_SH)
+                        current_signals = _load_json(LAST_SIGNAL_FILE, {})
+                        fcntl.flock(_lf, fcntl.LOCK_UN)
+                    if current_signals.get(dedup_key, {}).get("confirm_bar_time") == setup["confirm_bar_time"]:
                         continue  # already signaled this exact confirmation candle
 
                     msg = format_setup(name, setup)
                     try:
                         photo_path = chart.make_signal_chart(
                             name, symbol, setup["bias"], setup["price"], setup["sl"], setup["tp"]
-                        )
+                        ) if chart is not None else None
                     except Exception as chart_err:
                         print(f"Chart generation failed for {name}: {chart_err}")
                         photo_path = None
@@ -378,10 +390,27 @@ def main():
                         # Telegram delivery failed — don't record dedup or open trade
                         print(f"Signal send failed for {name} — will retry next cycle.")
                         continue
-                    # Register trade and dedup only after confirmed delivery
-                    add_trade(name, setup, signal_message_id=msg_id)
-                    last_signals[dedup_key] = {"time": time.time(), "confirm_bar_time": setup["confirm_bar_time"]}
-                    _save_json(LAST_SIGNAL_FILE, last_signals)
+                    # Register trade and dedup only after confirmed delivery; exclusive lock
+                    # to prevent a race with a simultaneously restarted second instance.
+                    # add_trade() is called INSIDE the lock so a concurrent process that
+                    # wins the race on dedup cannot also race on writing the trade entry.
+                    with open(LAST_SIGNAL_LOCK_PATH, "a") as _lf:
+                        fcntl.flock(_lf, fcntl.LOCK_EX)
+                        try:
+                            last_signals = _load_json(LAST_SIGNAL_FILE, {})
+                            # Re-check under exclusive lock: a concurrent process may have
+                            # already written this dedup entry between our initial check and now.
+                            if last_signals.get(dedup_key, {}).get("confirm_bar_time") == setup["confirm_bar_time"]:
+                                continue
+                            last_signals[dedup_key] = {"time": time.time(), "confirm_bar_time": setup["confirm_bar_time"]}
+                            # Only add the trade if dedup write succeeds; a failed write
+                            # would leave no dedup entry, causing a repeated signal next cycle.
+                            if _save_json(LAST_SIGNAL_FILE, last_signals):
+                                add_trade(name, setup, signal_message_id=msg_id)
+                            else:
+                                print(f"Dedup write failed for {name} — trade not recorded to prevent repeat signal")
+                        finally:
+                            fcntl.flock(_lf, fcntl.LOCK_UN)
                     print(f"Signal sent: {name} {setup['bias']} entry:{setup['price']} sl:{setup['sl']} tp:{setup['tp']} msg_id:{msg_id}")
                 except Exception as e:
                     print(f"Error {name}: {e}")

@@ -108,14 +108,18 @@ def send_alert(event, minutes_until):
         )
         r.raise_for_status()
         print(f"Calendar alert sent: {event['currency']} {event['title']}")
+        return True
     except Exception as e:
         print(f"send_alert error: {e}")
+        return False
 
 
 def main():
     print("Calendar alerts bot started...")
     state = _load_state()
-    last_date = ""
+    # Initialise to today so a cold start doesn't reset persisted dedup state
+    tz0 = pytz.timezone("Europe/Athens")
+    last_date = datetime.now(tz0).strftime("%Y-%m-%d")
     while True:
         try:
             tz = pytz.timezone("Europe/Athens")
@@ -134,8 +138,8 @@ def main():
                 minutes_until = (event_dt - now).total_seconds() / 60
                 key = event["currency"] + "_" + event["title"] + "_" + event["time"]
                 if LEAD_MIN_LOW <= minutes_until <= LEAD_MIN_HIGH and key not in state:
-                    send_alert(event, round(minutes_until))
-                    state[key] = True
+                    if send_alert(event, round(minutes_until)):
+                        state[key] = True  # only mark sent if Telegram delivery succeeded
             _save_state(state)
         except Exception as e:
             print(f"Main error: {e}")
