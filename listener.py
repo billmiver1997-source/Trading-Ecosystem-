@@ -252,10 +252,10 @@ def _fetch_analysis(pair_name):
         client = _get_anthropic()
         system_prompt = "You are a professional forex and commodities analyst. Respond in plain text only — no markdown, no asterisks. Always include a specific numeric ENTRY, SL, and TP. Use emojis sparingly."
         analysis_styles = [
-            "You are a professional forex analyst. Give a complete analysis of {pair} on the 15-minute timeframe. Cover: market bias, key levels, momentum, and a clear trade idea (BUY/SELL/WAIT) with entry, SL, and TP. Be direct and specific.",
-            "You are a senior trader reviewing {pair} live. Start with what the chart is telling you right now. Then: is there a trade here? If yes — entry, SL, TP and why. If no — what to wait for. Write like you're talking to a fellow trader.",
-            "You are a trading desk analyst. For {pair}: what is the dominant trend, what are the key levels price is reacting to, and what is your trade recommendation? Give exact levels. Include a risk note at the end. Confident, concise.",
-            "You are an experienced forex trader. Analyze {pair} and give your honest read: trend, momentum, key zone to watch. Then one clear recommendation: BUY / SELL / WAIT — with levels and reasoning. Don't hedge. Be direct.",
+            "Give a complete analysis of {pair} on the 15-minute timeframe. Cover: market bias, key levels, momentum, and a clear trade idea (BUY/SELL/WAIT) with entry, SL, and TP. Be direct and specific.",
+            "Review {pair} live. Start with what the chart is telling you right now. Then: is there a trade here? If yes — entry, SL, TP and why. If no — what to wait for. Write like you're talking to a fellow trader.",
+            "For {pair}: what is the dominant trend, what are the key levels price is reacting to, and what is your trade recommendation? Give exact levels. Include a risk note at the end. Confident, concise.",
+            "Analyze {pair} and give your honest read: trend, momentum, key zone to watch. Then one clear recommendation: BUY / SELL / WAIT — with levels and reasoning. Don't hedge. Be direct.",
         ]
         style = random.choice(analysis_styles).format(pair=pair_name)
         data_context = (
@@ -579,6 +579,8 @@ def handle_message(chat_id, text, username, first_name=""):
                     atr_series = tr.rolling(14).mean()
                     atr = atr_series.iloc[-1]
                     avg_atr = atr_series.mean()
+                    if pd.isna(atr) or pd.isna(avg_atr) or avg_atr == 0:
+                        return vname, None
                     pct = round((atr/avg_atr)*100, 0)
                     return vname, {"atr": round(atr, 4), "pct": int(pct)}
                 except Exception as e:
@@ -713,8 +715,11 @@ def handle_message(chat_id, text, username, first_name=""):
                     pip_size = _pip_sizes.get(t["name"], 0.01 if "JPY" in t["name"] else 0.0001)
                     if t["signal"] == "BUY":
                         pl_pips = round((price - entry) / pip_size, 1)
-                    else:
+                    elif t["signal"] == "SELL":
                         pl_pips = round((entry - price) / pip_size, 1)
+                    else:
+                        print(f"Portfolio: unrecognized signal '{t['signal']}' for {t.get('name','?')}")
+                        pl_pips = 0.0
                     pl_emoji = "🟢" if pl_pips > 0 else "🔴"
                     total_pl += pl_pips
                     lines_p.append(pl_emoji+" "+t["name"]+" "+t["signal"]+" @ "+str(round(entry,4))+" | "+str(pl_pips)+" pips")
@@ -774,9 +779,9 @@ def handle_message(chat_id, text, username, first_name=""):
                     send_message(chat_id, "📓 No journal entries yet.", main_menu())
                     return
                 lines_j = ["📓 TRADE JOURNAL\n"]
-                for e in entries[-5:]:
-                    result_emoji = "🟢" if e.get("result","") == "WIN" else "🔴"
-                    lines_j.append(result_emoji+" "+e["pair"]+" "+e["side"]+" | "+e.get("result","")+" "+e.get("pips","")+"\n   "+e.get("note",""))
+                for entry in entries[-5:]:
+                    result_emoji = "🟢" if entry.get("result","") == "WIN" else "🔴"
+                    lines_j.append(result_emoji+" "+entry.get("pair","?")+" "+entry.get("side","?")+" | "+entry.get("result","")+" "+entry.get("pips","")+"\n   "+entry.get("note",""))
                 send_message(chat_id, "\n".join(lines_j), main_menu())
         except Exception as e:
             print(f"Journal handler error: {e}")

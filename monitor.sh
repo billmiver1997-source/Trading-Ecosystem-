@@ -25,12 +25,14 @@ SERVICES=(
 for service in "${SERVICES[@]}"; do
     status=$(systemctl is-active "$service")
     if [ "$status" != "active" ]; then
-        msg="🚨 NOVA ALERT%0A%0AService DOWN: $service%0AStatus: $status%0ATime: $(date '+%d/%m/%Y %H:%M')"
+        _date_str=$(date '+%d/%m/%Y %H:%M' | sed 's/ /%20/')
+        msg="🚨 NOVA ALERT%0A%0AService DOWN: $service%0AStatus: $status%0ATime: $_date_str"
         curl -s "https://api.telegram.org/bot${TELEGRAM_TOKEN_SIGNAL}/sendMessage?chat_id=${ADMIN_CHAT_ID}&text=$msg" > /dev/null
         systemctl restart "$service"
         sleep 3
         new_status=$(systemctl is-active "$service")
-        msg2="🔄 NOVA ALERT%0A%0AService RESTARTED: $service%0ANew status: $new_status%0ATime: $(date '+%d/%m/%Y %H:%M')"
+        _date_str=$(date '+%d/%m/%Y %H:%M' | sed 's/ /%20/')
+        msg2="🔄 NOVA ALERT%0A%0AService RESTARTED: $service%0ANew status: $new_status%0ATime: $_date_str"
         curl -s "https://api.telegram.org/bot${TELEGRAM_TOKEN_SIGNAL}/sendMessage?chat_id=${ADMIN_CHAT_ID}&text=$msg2" > /dev/null
     fi
 done

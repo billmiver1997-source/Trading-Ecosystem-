@@ -149,9 +149,10 @@ def send_channel_text(msg):
 
 def get_data(symbol):
     try:
-        df = yf.Ticker(symbol).history(period="30d", interval="1h")
+        ticker = yf.Ticker(symbol)
+        df = ticker.history(period="30d", interval="1h")
         if len(df) < 210:
-            df = yf.Ticker(symbol).history(period="60d", interval="1h")
+            df = ticker.history(period="60d", interval="1h")
         if len(df) < 210:
             return None
         return df
@@ -187,6 +188,8 @@ def find_setup(df, name):
     bear_trend = ema50.iloc[i] < ema200.iloc[i]
 
     pull_low = low.iloc[i - 1]; pull_high = high.iloc[i - 1]
+    if pd.isna(atr.iloc[i - 1]):
+        return None
     tol = atr.iloc[i - 1] * 0.5  # use pullback bar's own ATR for proximity tolerance
 
     if bull_trend:

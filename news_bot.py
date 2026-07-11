@@ -356,7 +356,14 @@ def main():
                                     links_section += _line
                                 links_str = links_section.rstrip()
                             max_base = max(0, 1024 - len(links_str))
-                            msg = base[:max_base] + links_str
+                            if len(base) > max_base:
+                                truncated = base[:max_base]
+                                amp_idx = truncated.rfind('&')
+                                if amp_idx != -1 and ';' not in truncated[amp_idx:]:
+                                    truncated = truncated[:amp_idx]
+                                msg = truncated + links_str
+                            else:
+                                msg = base + links_str
                             parse_mode = "HTML"
                         else:
                             msg = header+"\n🕔 "+now_str+"\n\n"+report
