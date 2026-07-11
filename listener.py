@@ -376,7 +376,7 @@ def handle_message(chat_id, text, username, first_name=""):
                 # users.json may be a mixed list (strings from this bot, dicts from
                 # main_bot.py). Normalise to string IDs before checking membership so
                 # we don't append duplicate string entries for existing dict entries.
-                existing_ids = {item.get("id", item) if isinstance(item, dict) else item for item in users}
+                existing_ids = {item.get("id", "") if isinstance(item, dict) else item for item in users}
                 if str(chat_id) not in existing_ids:
                     users.append(str(chat_id))
                     save_users(users)
