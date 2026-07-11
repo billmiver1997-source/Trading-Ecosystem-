@@ -50,7 +50,7 @@ def send_poll(pair):
             json={
                 "chat_id": CHANNEL_ID,
                 "question": "\U0001f4ca " + pair + " — Bullish or Bearish today?",
-                "options": json.dumps(["\U0001f7e2 Bullish", "\U0001f534 Bearish"]),
+                "options": ["\U0001f7e2 Bullish", "\U0001f534 Bearish"],
                 "is_anonymous": True,
                 "type": "regular",
             },
