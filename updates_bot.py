@@ -93,6 +93,8 @@ def daily_tip():
     text = ai(prompt)
     if text:
         send(random.choice(headers)+"\n\n"+text+"\n\n📊 @novasignalschannel1\n\n⚠️ Educational purposes only. Not financial advice.", photo_name="tips.jpg")
+    else:
+        print("daily_tip: AI returned empty — post skipped")
 
 def psychology_post():
     prompts = [
@@ -105,6 +107,8 @@ def psychology_post():
     text = ai(random.choice(prompts))
     if text:
         send(random.choice(headers)+"\n\n"+text+"\n\n📊 @novasignalschannel1", photo_name="psychology.jpg")
+    else:
+        print("psychology_post: AI returned empty — post skipped")
 
 def weekly_preview():
     tz = pytz.timezone("Europe/Athens")
@@ -118,6 +122,8 @@ def weekly_preview():
     text = ai(random.choice(prompts))
     if text:
         send(random.choice(headers)+" | "+week+"\n\n"+text+"\n\n📊 @novasignalschannel1", photo_name="weekly.jpg")
+    else:
+        print("weekly_preview: AI returned empty — post skipped")
 
 def weekly_summary():
     prompts = [
@@ -129,6 +135,8 @@ def weekly_summary():
     text = ai(random.choice(prompts))
     if text:
         send(random.choice(headers)+"\n\n"+text+"\n\n📊 @novasignalschannel1", photo_name="weekly.jpg")
+    else:
+        print("weekly_summary: AI returned empty — post skipped")
 
 def main():
     try:

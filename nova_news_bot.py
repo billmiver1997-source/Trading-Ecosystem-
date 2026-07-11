@@ -18,6 +18,8 @@ if not TOKEN:
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 if not ANTHROPIC_API_KEY:
     raise RuntimeError("ANTHROPIC_API_KEY is not set in environment")
+# Create once at module level — avoids rebuilding the client on every summary call
+_anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
 MAIN_MENU = ReplyKeyboardMarkup([
     ["🇺🇦 Ukraine", "🇬🇷 Ελλάδα"],
@@ -148,12 +150,11 @@ def get_ai_summary(headlines, category):
     if not headlines:
         return "No recent news found for this category."
     try:
-        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
         styles = SUMMARY_STYLES.get(category, [
             "Summarize these headlines for traders. Pick the most important stories and explain each clearly. Use emojis. Plain text."
         ])
         system_prompt = random.choice(styles)
-        message = client.messages.create(
+        message = _anthropic_client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=450,
             system=system_prompt,

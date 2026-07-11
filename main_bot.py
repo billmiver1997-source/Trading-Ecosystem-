@@ -17,6 +17,8 @@ TOKEN = os.getenv("TELEGRAM_TOKEN_MAIN")
 if not TOKEN:
     raise RuntimeError("TELEGRAM_TOKEN_MAIN is not set in environment")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+if not ANTHROPIC_API_KEY:
+    print("Warning: ANTHROPIC_API_KEY not set — education content will be unavailable")
 OWNER_ID = 8626233751
 USERS_FILE = "/root/tradingbot/users.json"
 
@@ -25,10 +27,13 @@ def load_users():
         try:
             with open(USERS_FILE) as f:
                 data = json.load(f)
-                # Migration: αν είναι παλιά μορφή (list of strings)
-                if isinstance(data, list) and data and isinstance(data[0], str):
-                    return {}
-                return {u["id"]: u for u in data} if isinstance(data, list) else data
+                # Handle both legacy list-of-strings and mixed-format files
+                # (listener.py may write plain IDs while main_bot writes dicts, or
+                # vice versa).  Skip any non-dict entries so a mixed file doesn't
+                # raise TypeError and doesn't silently drop the dict entries.
+                if isinstance(data, list):
+                    return {u["id"]: u for u in data if isinstance(u, dict)}
+                return data
         except (json.JSONDecodeError, ValueError, OSError) as e:
             print(f"load_users error: {e}")
     return {}
@@ -220,7 +225,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "\U0001f4da Education":
         edu_caption = "TMGM Academy - Access world-class trading education."
         try:
-            with open("/opt/tradingbot/tmgm_logo.png", "rb") as photo:
+            with open("/root/tradingbot/tmgm_logo.png", "rb") as photo:
                 await context.bot.send_photo(chat_id=update.effective_chat.id, photo=photo, caption=edu_caption, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("TMGM Academy", url="https://www.tmgm.com/en/academy/overview")]]))
         except (FileNotFoundError, OSError) as e:
             print(f"Education logo missing: {e}")
@@ -230,7 +235,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "\U0001f4b9 Brokers":
         msg = ("💹 TMGM | Trade. Markets. Growth. Mastery.\n\nTMGM is an institutional-grade broker offering world-class trading conditions.\n\n📌 Key Features:\n- 12,000+ instruments (Forex, Stocks, Indices, Commodities, Crypto)\n- Leverage up to 1:500\n- Ultra-low spreads from 0.0 pips\n- MT4 & MT5 platforms\n- Regulated: ASIC (Australia) & VFSC\n- Fast execution & deep liquidity\n- 24/7 multilingual support\n\n🎯 Refer Code: IB1750034233G\n\nOpen your account and start trading with institutional conditions:")
         try:
-            with open("/opt/tradingbot/tmgm_logo.png", "rb") as photo:
+            with open("/root/tradingbot/tmgm_logo.png", "rb") as photo:
                 await context.bot.send_photo(chat_id=update.effective_chat.id, photo=photo, caption=msg, reply_markup=broker_links())
         except (FileNotFoundError, OSError) as e:
             print(f"Broker logo missing: {e}")
@@ -262,7 +267,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Open your account and start trading with institutional conditions:"
         )
         try:
-            with open("/opt/tradingbot/tmgm_logo.png", "rb") as photo:
+            with open("/root/tradingbot/tmgm_logo.png", "rb") as photo:
                 await context.bot.send_photo(chat_id=update.effective_chat.id, photo=photo, caption=msg, reply_markup=broker_links())
         except (FileNotFoundError, OSError) as e:
             print(f"TMGM info logo missing: {e}")

@@ -130,6 +130,7 @@ def main():
                 last_date = today
 
             events = get_high_impact_events()
+            state_changed = False
             for event in events:
                 try:
                     event_dt = tz.localize(datetime.strptime(today + " " + event["time"], "%Y-%m-%d %H:%M"))
@@ -140,7 +141,10 @@ def main():
                 if LEAD_MIN_LOW <= minutes_until <= LEAD_MIN_HIGH and key not in state:
                     if send_alert(event, round(minutes_until)):
                         state[key] = True  # only mark sent if Telegram delivery succeeded
-            _save_state(state)
+                        state_changed = True
+            # Only write to disk when state actually changed (saves unnecessary I/O every 5 min)
+            if state_changed:
+                _save_state(state)
         except Exception as e:
             print(f"Main error: {e}")
 

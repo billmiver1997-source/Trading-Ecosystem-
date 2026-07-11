@@ -63,6 +63,10 @@ def _nearest_sr(df, price, window=4, min_dist_pct=0.0015):
     required to sit at least ~0.15% away so a level essentially equal to the
     entry price (pure noise) never gets drawn as if it were a real zone."""
     swing_highs, swing_lows = _swing_points(df, window)
+    # Deduplicate: two bars with the same high/low both qualify as pivot points
+    # but drawing two lines at the same price is redundant and looks wrong.
+    swing_highs = sorted(set(swing_highs), reverse=True)
+    swing_lows = sorted(set(swing_lows))
     above = [h for h in swing_highs if h > price * (1 + min_dist_pct)]
     below = [l for l in swing_lows if l < price * (1 - min_dist_pct)]
     resistance = float(min(above)) if above else None
@@ -215,7 +219,9 @@ def make_equity_chart(journal_entries, rr=1.5):
         total += rr if result == "WIN" else (-1.0 if result == "LOSS" else 0.0)
         cum.append(total)
 
-    peak = cum[0]
+    # Start peak at 0 so a loss on the first trade shows a negative drawdown
+    # rather than 0 (which would happen if we started peak at cum[0]).
+    peak = 0.0
     drawdown = []
     for v in cum:
         peak = max(peak, v)
@@ -273,7 +279,7 @@ def _load_font(size):
     return ImageFont.load_default()
 
 
-def make_weekly_collage(entries):
+def make_weekly_collage(entries, rr=1.5):
     """Grid collage of the week's closed-trade charts, regenerated from each
     journal entry's stored symbol/entry/sl/tp/entry_time (each individual result
     chart is deleted right after sending, so this rebuilds them rather than
@@ -304,7 +310,7 @@ def make_weekly_collage(entries):
     wins = sum(1 for _, e in thumbs if e["result"] == "WIN")
     losses = sum(1 for _, e in thumbs if e["result"] == "LOSS")
     bes = sum(1 for _, e in thumbs if e["result"] == "BE")
-    net_r = sum(1.5 if e["result"] == "WIN" else (-1.0 if e["result"] == "LOSS" else 0.0) for _, e in thumbs)
+    net_r = sum(rr if e["result"] == "WIN" else (-1.0 if e["result"] == "LOSS" else 0.0) for _, e in thumbs)
 
     header_font = _load_font(28)
     header_text = f"WEEKLY DIGEST — {len(thumbs)} trades  |  {wins}W {losses}L {bes}BE  |  Net {net_r:+.1f}R"

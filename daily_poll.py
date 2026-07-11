@@ -78,9 +78,10 @@ def main():
             now = datetime.now(tz)
             today = now.strftime("%Y-%m-%d")
             if now.hour == SEND_HOUR and now.minute < 10 and sent_today != today:
-                sent_today = today
                 print("Sending daily poll...")
                 run_once()
+                # Mark sent AFTER run_once so a failure lets the next tick retry
+                sent_today = today
         except Exception as e:
             print(f"Main error: {e}")
         time.sleep(300)
