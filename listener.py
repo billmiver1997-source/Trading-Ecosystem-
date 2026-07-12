@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 load_dotenv("/root/tradingbot/.env")
 
 import fcntl
+import re
 import random
 import requests
 import feedparser
@@ -894,33 +895,27 @@ def handle_message(chat_id, text, username, first_name=""):
             send_message(chat_id, "📓 Trade journal temporarily unavailable.", main_menu())
 
     elif text_lower.startswith("journal:"):
+        # Writes to the user's OWN personal_journal.json closed history — this used
+        # to write straight into the bot's shared journal.json (the same file behind
+        # the public "Trade Journal" button and the weekly digest collage), meaning
+        # any user could inject an arbitrary fake win/loss into what's displayed as
+        # the bot's own official auto-strategy record. Redirected to keep the free-text
+        # one-shot "log an already-closed trade" convenience without that data risk.
         try:
-            journal_file = "/root/tradingbot/journal.json"
             parts = text.upper().replace("JOURNAL:","").strip().split()
             pair = parts[0]
             side = parts[1]
             result = parts[2]
-            pips = parts[3] if len(parts) > 3 else ""
+            pips_match = re.search(r"[-+]?\d+(\.\d+)?", parts[3]) if len(parts) > 3 else None
+            pips_val = float(pips_match.group()) if pips_match else 0.0
             note = " ".join(parts[4:]).lower() if len(parts) > 4 else ""
-            lock_path = journal_file + '.lock'
-            with open(lock_path, 'a') as _lf:
-                fcntl.flock(_lf, fcntl.LOCK_EX)
-                try:
-                    entries = []
-                    if os.path.exists(journal_file):
-                        try:
-                            with open(journal_file) as f:
-                                entries = json.load(f)
-                        except (json.JSONDecodeError, ValueError) as e:
-                            print(f"Journal JSON error: {e}")
-                    entries.append({"pair":pair,"side":side,"result":result,"pips":pips,"note":note,"date":datetime.now(pytz.timezone("Europe/Athens")).strftime("%d/%m/%Y")})
-                    _tmp = journal_file + '.tmp'
-                    with open(_tmp, 'w') as f:
-                        json.dump(entries, f)
-                    os.replace(_tmp, journal_file)
-                finally:
-                    fcntl.flock(_lf, fcntl.LOCK_UN)
-            send_message(chat_id, "📓 Journal entry added!", main_menu())
+            entry = {"pair": pair, "side": side, "result": result, "pips": pips_val,
+                      "note": note, "closed": time.time()}
+            def _append_closed(u):
+                u["closed"].append(entry)
+                u["closed"] = u["closed"][-100:]
+            _update_personal_journal(str(chat_id), _append_closed)
+            send_message(chat_id, "📓 Logged to your personal trades (see 📝 My Trades)!", main_menu())
         except Exception as e:
             print(f"Journal add error: {e}")
             send_message(chat_id, "Format:\nJOURNAL: EURUSD BUY WIN +50pips Good entry at support", main_menu())
