@@ -1102,6 +1102,32 @@ def handle_message(chat_id, text, username, first_name=""):
             print(f"S&R handler error: {e}")
             send_message(chat_id, "📍 S&R levels temporarily unavailable.", main_menu())
 
+    elif len(text.strip()) >= 4:
+        # Free-form question — anything that didn't match a known command/button
+        # and isn't just noise gets a general AI answer instead of "use the menu".
+        send_typing(chat_id)
+        try:
+            client = _get_anthropic()
+            message = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=300,
+                system=(
+                    "You are the Trading Nova assistant, answering a free-form question in a "
+                    "trading Telegram bot. Be direct and concise (under 120 words). Respond in "
+                    "plain text only — no markdown, no asterisks, no numbered-list formatting "
+                    "symbols. If the question is really asking for a specific pair's live "
+                    "analysis, mention they can use /analysis <pair> for a chart-based read. If "
+                    "it's off-topic for trading/markets, answer briefly and naturally anyway — "
+                    "don't refuse or lecture about scope."
+                ),
+                messages=[{"role": "user", "content": text[:500]}],
+            )
+            answer = message.content[0].text if message.content else None
+            send_message(chat_id, answer or "Couldn't come up with an answer for that — try rephrasing?", main_menu())
+        except Exception as e:
+            print(f"Free-form Q&A error: {e}")
+            send_message(chat_id, "Couldn't reach the AI just now — try again in a moment, or use the menu below:", main_menu())
+
     else:
         send_message(chat_id, "Use the menu below:", main_menu())
 
