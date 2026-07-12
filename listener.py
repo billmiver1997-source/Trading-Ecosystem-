@@ -125,6 +125,36 @@ def save_profile(user_id, username, first_name):
         finally:
             fcntl.flock(_lf, fcntl.LOCK_UN)
 
+PERSONAL_JOURNAL_FILE = "/root/tradingbot/personal_journal.json"
+
+def _load_personal_journal():
+    if os.path.exists(PERSONAL_JOURNAL_FILE):
+        try:
+            with open(PERSONAL_JOURNAL_FILE) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, ValueError, OSError) as e:
+            print(f"load_personal_journal error: {e}")
+    return {}
+
+def _update_personal_journal(chat_id_str, mutate_fn):
+    """Load-modify-save under an exclusive lock. mutate_fn receives this user's
+    {"open": [...], "closed": [...]} dict and mutates it in place."""
+    lock_path = PERSONAL_JOURNAL_FILE + '.lock'
+    with open(lock_path, 'a') as _lf:
+        fcntl.flock(_lf, fcntl.LOCK_EX)
+        try:
+            journal = _load_personal_journal()
+            user_entry = journal.setdefault(chat_id_str, {"open": [], "closed": []})
+            mutate_fn(user_entry)
+            tmp = PERSONAL_JOURNAL_FILE + '.tmp'
+            with open(tmp, 'w') as f:
+                json.dump(journal, f)
+            os.replace(tmp, PERSONAL_JOURNAL_FILE)
+        except Exception as e:
+            print(f"update_personal_journal error: {e}")
+        finally:
+            fcntl.flock(_lf, fcntl.LOCK_UN)
+
 def answer_callback(callback_id):
     try:
         requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/answerCallbackQuery",
@@ -171,7 +201,8 @@ def main_menu():
             [{"text": "📅 Calendar"}, {"text": "📋 Status"}],
             [{"text": "🧮 Risk Calculator"}, {"text": "💥 Volatility Alert"}],
             [{"text": "💼 Portfolio"}, {"text": "📓 Trade Journal"}],
-            [{"text": "📜 Signal History"}, {"text": "📍 S&R Levels"}],
+            [{"text": "📝 My Trades"}, {"text": "📜 Signal History"}],
+            [{"text": "📍 S&R Levels"}],
         ],
         "resize_keyboard": True,
         "one_time_keyboard": False,
@@ -347,6 +378,7 @@ def set_commands():
                 {"command": "calendar", "description": "Economic calendar today"},
                 {"command": "journal", "description": "Trade journal"},
                 {"command": "portfolio", "description": "Open signals P&L"},
+                {"command": "mytrades", "description": "Log & track your own trades"},
                 {"command": "history", "description": "Signal history & stats"},
                 {"command": "sr", "description": "Support & Resistance levels"},
                 {"command": "risk", "description": "Risk/lot size calculator"},
@@ -730,9 +762,64 @@ def handle_message(chat_id, text, username, first_name=""):
             print(f"Portfolio handler error: {e}")
             send_message(chat_id, "💼 Portfolio data temporarily unavailable.", main_menu())
 
+    elif text_lower in ["📝 my trades", "/mytrades"]:
+        try:
+            journal = _load_personal_journal()
+            entry = journal.get(str(chat_id), {"open": [], "closed": []})
+            open_trades = entry.get("open", [])
+            closed_trades = entry.get("closed", [])
+            if not open_trades and not closed_trades:
+                send_message(chat_id,
+                    "📝 MY TRADES\n\nNo personal trades logged yet.\n\n"
+                    "Log one:\nADD: EURUSD BUY 1.1200 SL:1.1150 TP:1.1300 LOTS:0.1\n\n"
+                    "Close one:\nCLOSE: EURUSD EXIT:1.1250", main_menu())
+            else:
+                lines_mt = ["📝 MY TRADES\n"]
+                if open_trades:
+                    lines_mt.append("Open (" + str(len(open_trades)) + "):")
+
+                    def _fetch_pl(t):
+                        canonical = ALIASES.get(t["pair"].lower(), t["pair"])
+                        symbol = SYMBOLS.get(canonical)
+                        if not symbol:
+                            return t, None
+                        try:
+                            df = yf.Ticker(symbol).history(period="1d", interval="5m")
+                            if len(df) == 0:
+                                df = yf.Ticker(symbol).history(period="5d", interval="1h")
+                            return t, float(df["Close"].iloc[-1])
+                        except Exception as e:
+                            print(f"My Trades P&L error for {t.get('pair','?')}: {e}")
+                            return t, None
+
+                    with ThreadPoolExecutor(max_workers=8) as ex:
+                        pl_results = list(ex.map(_fetch_pl, open_trades))
+                    for t, price in pl_results:
+                        if price is None:
+                            lines_mt.append("🟡 " + t["pair"] + " " + t["side"] + " @ " + str(t["entry"]) + " (price unavailable)")
+                            continue
+                        pip_size = 0.01 if "JPY" in t["pair"].upper() else 0.0001
+                        if t["side"] == "BUY":
+                            pl_pips = round((price - t["entry"]) / pip_size, 1)
+                        else:
+                            pl_pips = round((t["entry"] - price) / pip_size, 1)
+                        emoji = "🟢" if pl_pips > 0 else ("🔴" if pl_pips < 0 else "🟡")
+                        lines_mt.append(emoji + " " + t["pair"] + " " + t["side"] + " @ " + str(t["entry"]) + " | " + str(pl_pips) + " pips")
+                if closed_trades:
+                    wins = sum(1 for t in closed_trades if t["result"] == "WIN")
+                    losses = sum(1 for t in closed_trades if t["result"] == "LOSS")
+                    total_pips = round(sum(t["pips"] for t in closed_trades), 1)
+                    lines_mt.append("\n📊 History: " + str(wins) + "W / " + str(losses) + "L | " + str(total_pips) + " pips total")
+                    for t in closed_trades[-5:]:
+                        e = "🟢" if t["result"] == "WIN" else "🔴"
+                        lines_mt.append(e + " " + t["pair"] + " " + t["side"] + " | " + str(t["pips"]) + " pips")
+                send_message(chat_id, "\n".join(lines_mt), main_menu())
+        except Exception as e:
+            print(f"My Trades handler error: {e}")
+            send_message(chat_id, "📝 My Trades temporarily unavailable.", main_menu())
+
     elif text_lower.startswith("add:"):
         try:
-            port_file = "/root/tradingbot/portfolio.json"
             parts = text.upper().replace("ADD:","").strip().split()
             pair = parts[0]
             side = parts[1]
@@ -740,28 +827,47 @@ def handle_message(chat_id, text, username, first_name=""):
             sl = float([p for p in parts if p.startswith("SL:")][0].replace("SL:",""))
             tp = float([p for p in parts if p.startswith("TP:")][0].replace("TP:",""))
             lots = float([p for p in parts if p.startswith("LOTS:")][0].replace("LOTS:",""))
-            lock_path = port_file + '.lock'
-            with open(lock_path, 'a') as _lf:
-                fcntl.flock(_lf, fcntl.LOCK_EX)
-                try:
-                    trades = []
-                    if os.path.exists(port_file):
-                        try:
-                            with open(port_file) as f:
-                                trades = json.load(f)
-                        except (json.JSONDecodeError, ValueError) as e:
-                            print(f"Portfolio JSON error: {e}")
-                    trades.append({"pair":pair,"side":side,"entry":entry,"sl":sl,"tp":tp,"lots":lots})
-                    _tmp = port_file + '.tmp'
-                    with open(_tmp, 'w') as f:
-                        json.dump(trades, f)
-                    os.replace(_tmp, port_file)
-                finally:
-                    fcntl.flock(_lf, fcntl.LOCK_UN)
-            send_message(chat_id, "💼 Trade added!\n\n"+pair+" "+side+" @ "+str(entry)+"\nSL: "+str(sl)+" | TP: "+str(tp)+"\nLots: "+str(lots), main_menu())
+            new_trade = {"pair": pair, "side": side, "entry": entry, "sl": sl, "tp": tp,
+                         "lots": lots, "opened": time.time()}
+            _update_personal_journal(str(chat_id), lambda u: u["open"].append(new_trade))
+            send_message(chat_id, "📝 Trade logged!\n\n"+pair+" "+side+" @ "+str(entry)+"\nSL: "+str(sl)+" | TP: "+str(tp)+"\nLots: "+str(lots)+"\n\nClose it later with:\nCLOSE: "+pair+" EXIT:<price>", main_menu())
         except Exception as e:
-            print(f"Portfolio add error: {e}")
+            print(f"Personal journal add error: {e}")
             send_message(chat_id, "Format:\nADD: EURUSD BUY 1.1200 SL:1.1150 TP:1.1300 LOTS:0.1", main_menu())
+
+    elif text_lower.startswith("close:"):
+        try:
+            parts = text.upper().replace("CLOSE:","").strip().split()
+            pair = parts[0]
+            exit_price = float([p for p in parts if p.startswith("EXIT:")][0].replace("EXIT:",""))
+
+            result_holder = {}
+            def _close(u):
+                for i, t in enumerate(u["open"]):
+                    if t["pair"] == pair:
+                        pip_size = 0.01 if "JPY" in pair else 0.0001
+                        if t["side"] == "BUY":
+                            pips = round((exit_price - t["entry"]) / pip_size, 1)
+                        else:
+                            pips = round((t["entry"] - exit_price) / pip_size, 1)
+                        closed = dict(t, exit=exit_price, result="WIN" if pips >= 0 else "LOSS",
+                                      pips=pips, closed=time.time())
+                        u["open"].pop(i)
+                        u["closed"].append(closed)
+                        u["closed"] = u["closed"][-100:]
+                        result_holder["closed"] = closed
+                        return
+            _update_personal_journal(str(chat_id), _close)
+
+            if "closed" in result_holder:
+                c = result_holder["closed"]
+                emoji = "🟢" if c["result"] == "WIN" else "🔴"
+                send_message(chat_id, emoji+" Trade closed!\n\n"+c["pair"]+" "+c["side"]+" @ "+str(c["entry"])+" ➡️ "+str(exit_price)+"\nResult: "+str(c["pips"])+" pips ("+c["result"]+")", main_menu())
+            else:
+                send_message(chat_id, "No open personal trade found for "+pair+".\n\nCheck 📝 My Trades for your open positions.", main_menu())
+        except Exception as e:
+            print(f"Personal journal close error: {e}")
+            send_message(chat_id, "Format:\nCLOSE: EURUSD EXIT:1.1250", main_menu())
 
     elif text_lower in ["📓 trade journal", "/journal"]:
         try:
