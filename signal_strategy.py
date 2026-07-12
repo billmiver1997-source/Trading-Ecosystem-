@@ -72,6 +72,8 @@ def _save_json(path, data):
     try:
         with open(tmp, "w") as f:
             json.dump(data, f)
+            f.flush()
+            os.fsync(f.fileno())  # ensure bytes reach disk before atomic rename
         os.replace(tmp, path)
         return True
     except Exception as e:

@@ -58,15 +58,18 @@ def send_poll(pair):
         )
         r.raise_for_status()
         print(f"Poll sent: {pair}")
+        return True
     except Exception as e:
         print(f"send_poll error: {e}")
+        return False
 
 
 def run_once():
     idx = _load_cursor()
     pair = PAIRS[idx % len(PAIRS)]
-    send_poll(pair)
-    _save_cursor((idx + 1) % len(PAIRS))
+    # Only advance cursor if the poll was actually sent so a failed poll is retried next run
+    if send_poll(pair):
+        _save_cursor((idx + 1) % len(PAIRS))
 
 
 def main():

@@ -222,6 +222,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"start notify error: {e}")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.text:
+        return
     text = update.message.text
 
     if text == "\U0001f519 Back":

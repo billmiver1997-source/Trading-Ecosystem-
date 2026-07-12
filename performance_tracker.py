@@ -112,7 +112,7 @@ def send_all(msg):
         chat_id = item["id"] if isinstance(item, dict) else item
         try:
             r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
-                json={"chat_id": chat_id, "text": msg[:4000]}, timeout=10)
+                json={"chat_id": chat_id, "text": msg[:4096]}, timeout=10)
             r.raise_for_status()
             time.sleep(0.1)
         except Exception as e:
@@ -123,7 +123,7 @@ def send_channel_reply(msg, reply_to_message_id=None):
     if not SIGNALS_CHANNEL or not TELEGRAM_TOKEN:
         return
     try:
-        payload = {"chat_id": SIGNALS_CHANNEL, "text": msg[:4000]}
+        payload = {"chat_id": SIGNALS_CHANNEL, "text": msg[:4096]}
         if reply_to_message_id:
             payload["reply_to_message_id"] = reply_to_message_id
         r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
