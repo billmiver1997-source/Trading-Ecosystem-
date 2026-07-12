@@ -1116,9 +1116,11 @@ def handle_message(chat_id, text, username, first_name=""):
                     "trading Telegram bot. Be direct and concise (under 120 words). Respond in "
                     "plain text only — no markdown, no asterisks, no numbered-list formatting "
                     "symbols. If the question is really asking for a specific pair's live "
-                    "analysis, mention they can use /analysis <pair> for a chart-based read. If "
-                    "it's off-topic for trading/markets, answer briefly and naturally anyway — "
-                    "don't refuse or lecture about scope."
+                    "analysis, mention they can use /analysis <pair> for a chart-based read — "
+                    "only suggest a pair name from this exact supported list, never a ticker "
+                    "outside it: EURUSD, GBPUSD, USDCHF, AUDUSD, USDCAD, NZDUSD, USDJPY, XAUUSD, "
+                    "SILVER, COPPER, OIL, BTC, SOL, DXY. If it's off-topic for trading/markets, "
+                    "answer briefly and naturally anyway — don't refuse or lecture about scope."
                 ),
                 messages=[{"role": "user", "content": text[:500]}],
             )
