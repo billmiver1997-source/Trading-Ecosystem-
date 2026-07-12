@@ -19,6 +19,7 @@ if not CHANNEL_ID:
 ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY")
 if not ANTHROPIC_KEY:
     print("Warning: ANTHROPIC_API_KEY not set — AI update generation will be unavailable")
+_anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_KEY) if ANTHROPIC_KEY else None
 IMAGES_DIR = "/root/tradingbot/images"
 _photo_ids = {}
 
@@ -53,8 +54,7 @@ def send(msg, photo_name=None):
 
 def ai(prompt):
     try:
-        client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
-        r = client.messages.create(
+        r = _anthropic_client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=300,
             messages=[{"role":"user","content":prompt}]

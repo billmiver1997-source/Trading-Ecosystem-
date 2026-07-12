@@ -22,6 +22,7 @@ if not CHANNEL_ID:
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 if not ANTHROPIC_API_KEY:
     print("Warning: ANTHROPIC_API_KEY not set — AI news summaries will be unavailable")
+_anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
 IMAGES_DIR = "/root/tradingbot/images"
 CURSORS_FILE = "/root/tradingbot/cursors_news.json"
 NEWS_IMAGES = ["news.jpg", "news_2.jpg", "news_3.jpg", "news_4.jpg"]
@@ -265,9 +266,8 @@ def create_report(items):
     titles = [t for t, u, img in items]
     top_links = [(t, u) for t, u, img in items[:6] if u][:4]
     try:
-        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
         style = random.choice(REPORT_STYLES)
-        message = client.messages.create(
+        message = _anthropic_client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=380,
             system=style["system"],

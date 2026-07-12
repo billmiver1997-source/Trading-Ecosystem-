@@ -10,6 +10,8 @@ from datetime import datetime, timedelta
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
 SIGNALS_CHANNEL = os.getenv("SIGNALS_CHANNEL")
+if not TELEGRAM_TOKEN or not SIGNALS_CHANNEL:
+    raise RuntimeError("TELEGRAM_TOKEN_SIGNAL and SIGNALS_CHANNEL must be set in .env")
 IMAGES_DIR = "/root/tradingbot/images"
 CURSORS_FILE = "/root/tradingbot/cursors_sessions.json"
 _photo_ids = {}

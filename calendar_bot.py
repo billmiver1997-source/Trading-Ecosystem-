@@ -15,6 +15,7 @@ if not TELEGRAM_TOKEN:
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 if not ANTHROPIC_API_KEY:
     print("Warning: ANTHROPIC_API_KEY not set — AI calendar summaries will be unavailable")
+_anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
 CHANNEL_ID = os.getenv("TELEGRAM_NEWS_CHANNEL")
 if not CHANNEL_ID:
     raise RuntimeError("TELEGRAM_NEWS_CHANNEL is not set in environment")
@@ -93,9 +94,8 @@ def get_analysis(events):
     if not events:
         return ""
     try:
-        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
         events_text = "\n".join([e["time"]+" "+e["currency"]+" "+e["title"]+" Forecast:"+e["forecast"]+" Previous:"+e["previous"] for e in events])
-        message = client.messages.create(
+        message = _anthropic_client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=500,
             system="You are a forex analyst. Write in simple English only. No markdown.",

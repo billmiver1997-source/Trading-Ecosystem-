@@ -18,6 +18,7 @@ USERS_FILE = "/root/tradingbot/users.json"
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 if not ANTHROPIC_API_KEY:
     print("Warning: ANTHROPIC_API_KEY not set — AI earnings summaries will be unavailable")
+_anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
 ALPHA_KEY = os.getenv("ALPHA_VANTAGE_KEY")
 
 IMPORTANT_STOCKS = [
@@ -91,9 +92,8 @@ def get_analysis(earnings):
     if not earnings:
         return ""
     try:
-        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
         earnings_text = "\n".join([e["ticker"]+" - "+e["company"]+" ("+e["time"]+") EPS est: "+e["eps_est"] for e in earnings])
-        message = client.messages.create(
+        message = _anthropic_client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=400,
             system="You are a financial analyst briefing traders. Write in plain English only, no markdown.",

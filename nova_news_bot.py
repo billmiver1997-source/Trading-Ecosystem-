@@ -343,14 +343,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not all_h:
                 return None
             try:
-                client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
                 latest_styles = [
                     "You are a financial news editor. Plain text only. Pick the 5 most market-relevant headlines and write each as one punchy line with an emoji. End with one sentence on what's dominating the tape right now.",
                     "You are a senior forex analyst. Plain text. From these headlines pick the 3-4 most important for traders. For each: what happened and what's the market implication. Be sharp. Emojis.",
                     "You are a trading desk analyst sharing a quick news hit. Plain text. Lead with the biggest headline, then list 3-4 others. Flag anything high-impact. Short lines, emojis.",
                 ]
                 system = random.choice(latest_styles)
-                message = client.messages.create(
+                message = _anthropic_client.messages.create(
                     model="claude-haiku-4-5-20251001",
                     max_tokens=350,
                     system=system,
