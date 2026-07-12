@@ -19,6 +19,8 @@ if not TOKEN:
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 if not ANTHROPIC_API_KEY:
     print("Warning: ANTHROPIC_API_KEY not set — education content will be unavailable")
+# Singleton client — every other bot does this; don't rebuild on every get_education() call
+_anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_API_KEY else None
 OWNER_ID = 8626233751
 USERS_FILE = "/root/tradingbot/users.json"
 
@@ -176,7 +178,9 @@ def get_market_overview():
 
 def get_education(topic):
     try:
-        client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+        client = _anthropic_client
+        if client is None:
+            return "Education content temporarily unavailable — AI key not configured."
         prompts = {
             "forex": "Explain Forex trading for a beginner. Max 200 words. Use emojis. Plain text only.",
             "crypto": "Explain cryptocurrency trading for a beginner. Max 200 words. Use emojis. Plain text only.",
