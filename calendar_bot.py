@@ -91,7 +91,7 @@ def get_calendar():
         return []
 
 def get_analysis(events):
-    if not events:
+    if not events or not _anthropic_client:
         return ""
     try:
         events_text = "\n".join([e["time"]+" "+e["currency"]+" "+e["title"]+" Forecast:"+e["forecast"]+" Previous:"+e["previous"] for e in events])

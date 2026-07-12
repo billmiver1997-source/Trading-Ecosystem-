@@ -395,9 +395,11 @@ def set_commands():
 
 def handle_message(chat_id, text, username, first_name=""):
     text = text.strip()
-    # Strip @botname suffix that Telegram appends to commands in group chats
-    if text.startswith("/") and "@" in text:
-        text = text.split("@")[0]
+    # Strip @botname suffix from the command token only — splitting the whole string
+    # on "@" would discard arguments like "/analysis@botname eurusd" → "/analysis"
+    if text.startswith("/") and "@" in text.split()[0]:
+        parts = text.split(None, 1)
+        text = parts[0].split("@")[0] + (" " + parts[1] if len(parts) > 1 else "")
     text_lower = text.lower()
 
     if text_lower in ["/start", "start"]:
@@ -795,11 +797,20 @@ def handle_message(chat_id, text, username, first_name=""):
 
                     with ThreadPoolExecutor(max_workers=8) as ex:
                         pl_results = list(ex.map(_fetch_pl, open_trades))
+                    _pip_sizes_mt = {
+                        "XAUUSD": 0.01, "GOLD": 0.01,
+                        "SILVERUSD": 0.001, "SILVER": 0.001,
+                        "OILUSD": 0.01, "OIL": 0.01,
+                        "BTCUSD": 1.0, "BTC": 1.0,
+                        "SOLUSD": 0.01, "SOL": 0.01,
+                        "COPPERUSD": 0.001, "COPPER": 0.001,
+                    }
                     for t, price in pl_results:
                         if price is None:
                             lines_mt.append("🟡 " + t["pair"] + " " + t["side"] + " @ " + str(t["entry"]) + " (price unavailable)")
                             continue
-                        pip_size = 0.01 if "JPY" in t["pair"].upper() else 0.0001
+                        _pk = t["pair"].upper().replace("/", "")
+                        pip_size = _pip_sizes_mt.get(_pk, 0.01 if "JPY" in _pk else 0.0001)
                         if t["side"] == "BUY":
                             pl_pips = round((price - t["entry"]) / pip_size, 1)
                         else:
@@ -812,7 +823,7 @@ def handle_message(chat_id, text, username, first_name=""):
                     total_pips = round(sum(t["pips"] for t in closed_trades), 1)
                     lines_mt.append("\n📊 History: " + str(wins) + "W / " + str(losses) + "L | " + str(total_pips) + " pips total")
                     for t in closed_trades[-5:]:
-                        e = "🟢" if t["result"] == "WIN" else "🔴"
+                        e = "🟢" if t["result"] == "WIN" else ("🟡" if t["result"] == "BE" else "🔴")
                         lines_mt.append(e + " " + t["pair"] + " " + t["side"] + " | " + str(t["pips"]) + " pips")
                 send_message(chat_id, "\n".join(lines_mt), main_menu())
         except Exception as e:
@@ -842,16 +853,27 @@ def handle_message(chat_id, text, username, first_name=""):
             pair = parts[0]
             exit_price = float([p for p in parts if p.startswith("EXIT:")][0].replace("EXIT:",""))
 
+            _pip_sizes_close = {
+                "XAUUSD": 0.01, "GOLD": 0.01,
+                "SILVERUSD": 0.001, "SILVER": 0.001,
+                "OILUSD": 0.01, "OIL": 0.01,
+                "BTCUSD": 1.0, "BTC": 1.0,
+                "SOLUSD": 0.01, "SOL": 0.01,
+                "COPPERUSD": 0.001, "COPPER": 0.001,
+            }
             result_holder = {}
             def _close(u):
                 for i, t in enumerate(u["open"]):
                     if t["pair"] == pair:
-                        pip_size = 0.01 if "JPY" in pair else 0.0001
+                        _pk = pair.upper().replace("/", "")
+                        pip_size = _pip_sizes_close.get(_pk, 0.01 if "JPY" in _pk else 0.0001)
                         if t["side"] == "BUY":
                             pips = round((exit_price - t["entry"]) / pip_size, 1)
                         else:
                             pips = round((t["entry"] - exit_price) / pip_size, 1)
-                        closed = dict(t, exit=exit_price, result="WIN" if pips >= 0 else "LOSS",
+                        # pips == 0 is breakeven, not a win
+                        result_label = "WIN" if pips > 0 else ("BE" if pips == 0 else "LOSS")
+                        closed = dict(t, exit=exit_price, result=result_label,
                                       pips=pips, closed=time.time())
                         u["open"].pop(i)
                         u["closed"].append(closed)
@@ -862,7 +884,7 @@ def handle_message(chat_id, text, username, first_name=""):
 
             if "closed" in result_holder:
                 c = result_holder["closed"]
-                emoji = "🟢" if c["result"] == "WIN" else "🔴"
+                emoji = "🟢" if c["result"] == "WIN" else ("🟡" if c["result"] == "BE" else "🔴")
                 send_message(chat_id, emoji+" Trade closed!\n\n"+c["pair"]+" "+c["side"]+" @ "+str(c["entry"])+" ➡️ "+str(exit_price)+"\nResult: "+str(c["pips"])+" pips ("+c["result"]+")", main_menu())
             else:
                 send_message(chat_id, "No open personal trade found for "+pair+".\n\nCheck 📝 My Trades for your open positions.", main_menu())

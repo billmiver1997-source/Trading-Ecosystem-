@@ -360,7 +360,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 print(f"Latest news AI error: {e}")
                 return "\n".join("• "+h for h in all_h[:5])
 
-        summary_text = await asyncio.to_thread(_fetch_latest_news)
+        try:
+            summary_text = await asyncio.to_thread(_fetch_latest_news)
+        except Exception as e:
+            print(f"Latest news fetch error: {e}")
+            summary_text = None
         if summary_text is None:
             await update.message.reply_text(
                 "\U0001f4f0 No major market news found right now.\n\n\U0001f4f0 Full coverage: @tradingNovaNews",

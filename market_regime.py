@@ -67,7 +67,7 @@ def classify_regime(df):
     bb_std = close.rolling(20).std()
     bb_width = (4 * bb_std) / bb_mean  # (upper-lower)/mean
     width_now = bb_width.iloc[-1]
-    width_percentile = (bb_width.iloc[-100:] < width_now).mean() if len(bb_width) >= 30 else 0.5
+    width_percentile = (bb_width.iloc[-100:] < width_now).mean() if len(bb_width) >= 100 else 0.5
 
     adx_now = adx.iloc[-1]
     bullish = plus_di.iloc[-1] > minus_di.iloc[-1]

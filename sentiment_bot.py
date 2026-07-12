@@ -147,6 +147,11 @@ def format_message(fg, dxy, gold, vix):
         print("Sentiment: all data sources unavailable, skipping AI call")
         return None
 
+    if not _anthropic_client:
+        print("Sentiment: ANTHROPIC_API_KEY not set, using raw data")
+        header = random.choice(SENTIMENT_HEADERS)
+        return header + "\n🕔 " + datetime.now(pytz.timezone("Europe/Athens")).strftime("%d/%m/%Y %H:%M") + "\n\n" + data
+
     try:
         style = random.choice(SENTIMENT_STYLES)
         message = _anthropic_client.messages.create(

@@ -10,7 +10,7 @@ import time
 import random
 import feedparser
 import anthropic
-from datetime import datetime, timedelta
+from datetime import datetime
 import pytz
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
@@ -265,6 +265,9 @@ def create_report(items):
         return None, []
     titles = [t for t, u, img in items]
     top_links = [(t, u) for t, u, img in items[:6] if u][:4]
+    if not _anthropic_client:
+        print("create_report: ANTHROPIC_API_KEY not set, skipping AI summary")
+        return None, top_links
     try:
         style = random.choice(REPORT_STYLES)
         message = _anthropic_client.messages.create(
