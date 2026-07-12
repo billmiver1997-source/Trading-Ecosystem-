@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv("/root/tradingbot/.env")
 
+import json
 import random
 import requests
 import anthropic
@@ -21,7 +22,37 @@ if not ANTHROPIC_KEY:
     print("Warning: ANTHROPIC_API_KEY not set — AI update generation will be unavailable")
 _anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_KEY) if ANTHROPIC_KEY else None
 IMAGES_DIR = "/root/tradingbot/images"
+CURSORS_FILE = "/root/tradingbot/cursors_updates.json"
 _photo_ids = {}
+_img_cursors = {}
+
+TIPS_IMAGES = ["tips.jpg", "tips_2.jpg", "tips_3.jpg", "tips_4.jpg"]
+PSYCHOLOGY_IMAGES = ["psychology.jpg", "psychology_2.jpg", "psychology_3.jpg"]
+WEEKLY_IMAGES = ["weekly.jpg", "weekly_2.jpg", "weekly_3.jpg"]
+
+def _load_cursors():
+    global _img_cursors
+    try:
+        if os.path.exists(CURSORS_FILE):
+            with open(CURSORS_FILE) as f:
+                _img_cursors = json.load(f)
+    except Exception as e:
+        print(f"load cursors error: {e}")
+
+def _save_cursors():
+    try:
+        tmp = CURSORS_FILE + '.tmp'
+        with open(tmp, 'w') as f:
+            json.dump(_img_cursors, f)
+        os.replace(tmp, CURSORS_FILE)
+    except Exception as e:
+        print(f"save cursors error: {e}")
+
+def _next_photo(category, pool):
+    idx = _img_cursors.get(category, 0)
+    _img_cursors[category] = (idx + 1) % len(pool)
+    _save_cursors()
+    return pool[idx]
 
 def send(msg, photo_name=None):
     cap = msg[:1024]
@@ -92,7 +123,7 @@ def daily_tip():
     prompt = random.choice(formats).format(topic=topic, context=context)
     text = ai(prompt)
     if text:
-        send(random.choice(headers)+"\n\n"+text+"\n\n📊 @novasignalschannel1\n\n⚠️ Educational purposes only. Not financial advice.", photo_name="tips.jpg")
+        send(random.choice(headers)+"\n\n"+text+"\n\n📊 @novasignalschannel1\n\n⚠️ Educational purposes only. Not financial advice.", photo_name=_next_photo("tips", TIPS_IMAGES))
     else:
         print("daily_tip: AI returned empty — post skipped")
 
@@ -106,7 +137,7 @@ def psychology_post():
     headers = ["🧠 TRADING PSYCHOLOGY", "💭 MINDSET MATTERS", "🎯 TRADER MINDSET", "🧘 MENTAL EDGE"]
     text = ai(random.choice(prompts))
     if text:
-        send(random.choice(headers)+"\n\n"+text+"\n\n📊 @novasignalschannel1", photo_name="psychology.jpg")
+        send(random.choice(headers)+"\n\n"+text+"\n\n📊 @novasignalschannel1", photo_name=_next_photo("psychology", PSYCHOLOGY_IMAGES))
     else:
         print("psychology_post: AI returned empty — post skipped")
 
@@ -121,7 +152,7 @@ def weekly_preview():
     headers = ["📅 WEEK AHEAD", "🗓 WEEKLY PREVIEW", "📊 THIS WEEK IN MARKETS", "🔭 WEEK AHEAD OUTLOOK"]
     text = ai(random.choice(prompts))
     if text:
-        send(random.choice(headers)+" | "+week+"\n\n"+text+"\n\n📊 @novasignalschannel1", photo_name="weekly.jpg")
+        send(random.choice(headers)+" | "+week+"\n\n"+text+"\n\n📊 @novasignalschannel1", photo_name=_next_photo("weekly", WEEKLY_IMAGES))
     else:
         print("weekly_preview: AI returned empty — post skipped")
 
@@ -134,11 +165,12 @@ def weekly_summary():
     headers = ["📈 WEEKLY WRAP-UP", "📋 WEEK IN REVIEW", "🏁 FRIDAY WRAP", "📊 THIS WEEK SUMMARY"]
     text = ai(random.choice(prompts))
     if text:
-        send(random.choice(headers)+"\n\n"+text+"\n\n📊 @novasignalschannel1", photo_name="weekly.jpg")
+        send(random.choice(headers)+"\n\n"+text+"\n\n📊 @novasignalschannel1", photo_name=_next_photo("weekly", WEEKLY_IMAGES))
     else:
         print("weekly_summary: AI returned empty — post skipped")
 
 def main():
+    _load_cursors()
     try:
         schedule.every().day.at("06:00", "Europe/Athens").do(daily_tip)
         schedule.every().monday.at("05:00", "Europe/Athens").do(weekly_preview)
