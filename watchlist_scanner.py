@@ -232,6 +232,8 @@ def main():
 
             for name, symbol in PAIRS.items():
                 try:
+                    if name == "DXY":  # DXY is a correlation reference, not a tradable pair
+                        continue
                     if name in open_pairs:
                         continue
                     df = get_data(symbol)

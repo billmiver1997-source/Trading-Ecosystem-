@@ -70,6 +70,8 @@ def run_once():
     # Only advance cursor if the poll was actually sent so a failed poll is retried next run
     if send_poll(pair):
         _save_cursor((idx + 1) % len(PAIRS))
+        return True
+    return False
 
 
 def main():
@@ -82,9 +84,9 @@ def main():
             today = now.strftime("%Y-%m-%d")
             if now.hour == SEND_HOUR and now.minute < 10 and sent_today != today:
                 print("Sending daily poll...")
-                run_once()
-                # Mark sent AFTER run_once so a failure lets the next tick retry
-                sent_today = today
+                # Only mark sent if poll was actually delivered; silent failures retry next tick
+                if run_once():
+                    sent_today = today
         except Exception as e:
             print(f"Main error: {e}")
         time.sleep(300)

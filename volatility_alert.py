@@ -114,6 +114,7 @@ def main():
             with ThreadPoolExecutor(max_workers=8) as ex:
                 results = dict(ex.map(fetch_volatility, PAIRS.items()))
 
+            state_changed = False
             for name, data in results.items():
                 if not data:
                     continue
@@ -122,10 +123,13 @@ def main():
                 if is_high and not was_alerting:
                     send_alert(name, data)
                     state[name] = {"alerting": True}
+                    state_changed = True
                 elif not is_high and was_alerting:
                     # Dropped back under threshold — allow a fresh alert if it spikes again
                     state[name] = {"alerting": False}
-            _save_state(state)
+                    state_changed = True
+            if state_changed:
+                _save_state(state)
         except Exception as e:
             print(f"Main error: {e}")
 

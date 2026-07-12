@@ -91,6 +91,8 @@ def get_earnings():
 def get_analysis(earnings):
     if not earnings:
         return ""
+    if _anthropic_client is None:
+        return ""
     try:
         earnings_text = "\n".join([e["ticker"]+" - "+e["company"]+" ("+e["time"]+") EPS est: "+e["eps_est"] for e in earnings])
         message = _anthropic_client.messages.create(

@@ -59,7 +59,8 @@ def get_calendar():
                 if not all([time_td, currency_td, event_td]):
                     continue
 
-                impact_bulls = len(impact_td.find_all("i", class_="grayFullBullishIcon")) if impact_td else 0
+                # Match any bullish-icon class variant (site occasionally renames the CSS class)
+                impact_bulls = len(impact_td.find_all("i", class_=lambda c: c and "BullishIcon" in c)) if impact_td else 0
                 if impact_bulls < 2:
                     continue
 

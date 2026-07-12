@@ -34,7 +34,14 @@ def load_users():
                 # vice versa).  Skip any non-dict entries so a mixed file doesn't
                 # raise TypeError and doesn't silently drop the dict entries.
                 if isinstance(data, list):
-                    return {u["id"]: u for u in data if isinstance(u, dict)}
+                    result = {}
+                    for u in data:
+                        if isinstance(u, dict) and "id" in u:
+                            result[u["id"]] = u
+                        elif isinstance(u, str):
+                            # listener.py writes plain string IDs; preserve them as minimal dicts
+                            result[u] = {"id": u}
+                    return result
                 return data
         except (json.JSONDecodeError, ValueError, OSError) as e:
             print(f"load_users error: {e}")

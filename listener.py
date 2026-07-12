@@ -613,7 +613,8 @@ def handle_message(chat_id, text, username, first_name=""):
                     tr = pd.concat([df["High"]-df["Low"], (df["High"]-prev_close).abs(), (df["Low"]-prev_close).abs()], axis=1).max(axis=1)
                     atr_series = tr.rolling(14).mean()
                     atr = atr_series.iloc[-1]
-                    avg_atr = atr_series.mean()
+                    # Exclude current bar so a spike doesn't inflate its own baseline (matches volatility_alert.py)
+                    avg_atr = atr_series.iloc[:-1].mean()
                     if pd.isna(atr) or pd.isna(avg_atr) or avg_atr == 0:
                         return vname, None
                     pct = round((atr/avg_atr)*100, 0)

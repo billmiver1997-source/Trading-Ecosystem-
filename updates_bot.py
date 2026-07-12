@@ -121,6 +121,8 @@ def send(msg, photo_name=None):
         print("Error: "+str(e))
 
 def ai(prompt):
+    if _anthropic_client is None:
+        return ""
     try:
         r = _anthropic_client.messages.create(
             model="claude-haiku-4-5-20251001",

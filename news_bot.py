@@ -383,7 +383,7 @@ def main():
                         # Prune anything older than 2x the TTL so the file doesn't grow forever
                         seen = {k: v for k, v in seen.items() if now_t - v < SEEN_TTL_HOURS * 3600 * 2}
                         _save_seen(seen)
-                sent_today[send_key] = True  # mark attempted regardless to prevent duplicate sends
+                        sent_today[send_key] = True  # only mark sent when content was actually delivered
                 time.sleep(600)
                 continue
 

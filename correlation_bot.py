@@ -61,7 +61,9 @@ def build_correlation_matrix(lookback_days=30):
             print(f"correlation fetch error {name}: {e}")
     if len(closes) < 2:
         return None
-    returns = pd.DataFrame(closes).dropna(how="all")
+    # Use "any" so all pairs are correlated over the exact same date range;
+    # "all" keeps rows where some markets are closed, making correlations incomparable.
+    returns = pd.DataFrame(closes).dropna(how="any")
     return returns.corr()
 
 
