@@ -1,9 +1,18 @@
-"""Broader-pair "developing setup" scanner — a heads-up, not a trade call. Scans
-a wider basket than the 2 pairs signal_strategy.py actually trades, using looser
-criteria (price approaching EMA20 in the HTF trend direction, no confirmation
-candle required yet) so users get early awareness of pairs worth watching
-manually. Deliberately has no entry/SL/TP and no chart, so it can never be
-mistaken for an actual trade signal.
+"""Broader-pair "developing setup" scanner — a heads-up, not a trade call. Covers
+the full 15-instrument universe (vs. the 5 pairs signal_strategy.py actually
+trades), using looser criteria (price approaching EMA20 in the HTF trend
+direction, no confirmation candle required yet) so users get early awareness of
+pairs worth watching manually. Deliberately has no entry/SL/TP and no chart, so
+it can never be mistaken for an actual trade signal.
+
+Each category applies the same filter logic that was backtested for live trading
+(2026-07 category review — see signal_strategy.py's ALL_PAIRS comment for the
+full results) even though most of these categories backtested NEGATIVE for real
+entries: an ADX(14)>20 trend-strength filter for FX majors, a tighter EMA20
+tolerance for EUR/CHF, a DXY inverse-correlation filter for metals, and a volume
+filter for crypto. Applying the tuned filters to a no-risk "worth watching" flag
+is safe even for pairs that don't have a validated live edge — it's just early
+awareness, never a trade call.
 """
 import os
 from dotenv import load_dotenv
@@ -27,17 +36,56 @@ OPEN_TRADES_FILE = "/root/tradingbot/open_trades.json"
 SCAN_INTERVAL = 3600  # hourly — matches the 1H candle resolution being scanned
 
 PAIRS = {
-    "XAU/USD": "GC=F", "Silver/USD": "SI=F", "Oil/USD": "CL=F", "SOL/USD": "SOL-USD",
+    "XAU/USD": "GC=F", "Silver/USD": "SI=F", "Copper/USD": "HG=F", "Oil/USD": "CL=F",
+    "BTC/USD": "BTC-USD", "SOL/USD": "SOL-USD",
     "EUR/USD": "EURUSD=X", "GBP/USD": "GBPUSD=X", "USD/CHF": "USDCHF=X",
     "AUD/USD": "AUDUSD=X", "USD/CAD": "USDCAD=X", "NZD/USD": "NZDUSD=X", "USD/JPY": "USDJPY=X",
+    "EUR/CHF": "EURCHF=X", "DXY": "DX-Y.NYB",
 }
 
 PAIR_EMOJIS = {
-    "XAU/USD": "\U0001fa99", "Silver/USD": "\U0001f948", "Oil/USD": "⛽", "SOL/USD": "\U0001f535",
+    "XAU/USD": "\U0001fa99", "Silver/USD": "\U0001f948", "Copper/USD": "\U0001f7e4", "Oil/USD": "⛽",
+    "BTC/USD": "\U0001f7e1", "SOL/USD": "\U0001f535",
     "EUR/USD": "\U0001f1ea\U0001f1fa", "GBP/USD": "\U0001f1ec\U0001f1e7", "USD/CHF": "\U0001f1fa\U0001f1f8",
     "AUD/USD": "\U0001f1e6\U0001f1fa", "USD/CAD": "\U0001f1e8\U0001f1e6", "NZD/USD": "\U0001f1f3\U0001f1ff",
-    "USD/JPY": "\U0001f1ef\U0001f1f5",
+    "USD/JPY": "\U0001f1ef\U0001f1f5", "EUR/CHF": "\U0001f1ea\U0001f1fa\U0001f1e8\U0001f1ed", "DXY": "\U0001f4b5",
 }
+
+# Category-specific filters for the watchlist heads-up (see module docstring). Pairs
+# not listed fall back to the original generic tol=0.6x ATR with no extra filter
+# (USD/CAD, Oil/USD, DXY itself).
+PAIR_PARAMS = {
+    "EUR/USD": {"tol_mult": 0.5, "adx_min": 20},
+    "GBP/USD": {"tol_mult": 0.5, "adx_min": 20},
+    "USD/CHF": {"tol_mult": 0.5, "adx_min": 20},
+    "USD/JPY": {"tol_mult": 0.5, "adx_min": 20},
+    "AUD/USD": {"tol_mult": 0.5, "adx_min": 20},
+    "NZD/USD": {"tol_mult": 0.5, "adx_min": 20},
+    "EUR/CHF": {"tol_mult": 0.3},
+    "XAU/USD": {"tol_mult": 0.65, "dxy_filter": True},
+    "Silver/USD": {"tol_mult": 0.65, "dxy_filter": True},
+    "Copper/USD": {"tol_mult": 0.65, "dxy_filter": True},
+    "BTC/USD": {"tol_mult": 1.0, "vol_min_ratio": 0.7},
+    "SOL/USD": {"tol_mult": 1.0, "vol_min_ratio": 0.7},
+}
+
+
+def _wilder_smooth(series, period):
+    return series.ewm(alpha=1 / period, adjust=False).mean()
+
+
+def compute_adx(df, period=14):
+    high, low, close = df["High"], df["Low"], df["Close"]
+    up_move = high.diff()
+    down_move = -low.diff()
+    plus_dm = ((up_move > down_move) & (up_move > 0)) * up_move
+    minus_dm = ((down_move > up_move) & (down_move > 0)) * down_move
+    tr = pd.concat([high - low, (high - close.shift()).abs(), (low - close.shift()).abs()], axis=1).max(axis=1)
+    atr_w = _wilder_smooth(tr, period)
+    plus_di = 100 * _wilder_smooth(plus_dm, period) / atr_w
+    minus_di = 100 * _wilder_smooth(minus_dm, period) / atr_w
+    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di)
+    return _wilder_smooth(dx, period)
 
 
 def _load_json(path, default):
@@ -73,12 +121,21 @@ def get_data(symbol):
         return None
 
 
-def find_developing_setup(df):
+def find_developing_setup(df, name, dxy_bull=None, dxy_bear=None):
     """Looser than signal_strategy.find_setup: HTF trend + price currently
     within the EMA20 pullback zone — no rejection confirmation candle required
-    yet, so this fires earlier (and less reliably) than an actual signal."""
+    yet, so this fires earlier (and less reliably) than an actual signal.
+    Category-specific tolerance/ADX/volume/DXY filters come from PAIR_PARAMS —
+    see module docstring for why."""
     if df is None or len(df) < 210:
         return None
+
+    params = PAIR_PARAMS.get(name, {"tol_mult": 0.6})
+    tol_mult = params["tol_mult"]
+    adx_min = params.get("adx_min")
+    vol_min_ratio = params.get("vol_min_ratio")
+    dxy_filter = params.get("dxy_filter", False)
+
     close = df["Close"]; high = df["High"]; low = df["Low"]
     ema20 = close.ewm(span=20).mean()
     ema50 = close.ewm(span=50).mean()
@@ -90,11 +147,35 @@ def find_developing_setup(df):
     a = atr.iloc[-1]
     if pd.isna(a) or a == 0:
         return None
-    tol = a * 0.6
 
+    if adx_min is not None:
+        adx_val = compute_adx(df).iloc[-1]
+        if pd.isna(adx_val) or adx_val <= adx_min:
+            return None
+
+    if vol_min_ratio is not None:
+        vol = df["Volume"] if "Volume" in df.columns else None
+        if vol is None:
+            return None
+        vol_avg = vol.iloc[-21:-1].mean()
+        if vol_avg == 0 or pd.isna(vol_avg) or pd.isna(vol.iloc[-1]):
+            return None
+        if vol.iloc[-1] < vol_avg * vol_min_ratio:
+            return None
+
+    tol = a * tol_mult
     bull_trend = ema50.iloc[-1] > ema200.iloc[-1]
     bear_trend = ema50.iloc[-1] < ema200.iloc[-1]
     near_ema20 = abs(price - ema20.iloc[-1]) <= tol
+
+    if dxy_filter and dxy_bull is not None and dxy_bear is not None and len(dxy_bull) and len(dxy_bear):
+        # Metals inverse-correlation: only flag a bullish metal watch while DXY
+        # itself is bearish, and vice versa — a gold BUY read that agrees with a
+        # simultaneous dollar-bullish read is the exact conflict the filter exists for.
+        if bull_trend and not dxy_bear.iloc[-1]:
+            bull_trend = False
+        if bear_trend and not dxy_bull.iloc[-1]:
+            bear_trend = False
 
     if bull_trend and near_ema20:
         return {"bias": "BULLISH", "price": price}
@@ -135,12 +216,26 @@ def main():
             open_trades = _load_json(OPEN_TRADES_FILE, [])
             open_pairs = set(t["name"] for t in open_trades)
 
+            # Fetched once per cycle (not per pair) and only consumed by metals,
+            # which have dxy_filter=True in PAIR_PARAMS.
+            dxy_bull = dxy_bear = None
+            try:
+                dxy_df = get_data(PAIRS["DXY"])
+                if dxy_df is not None and len(dxy_df) >= 210:
+                    dxy_close = dxy_df["Close"]
+                    dxy_ema50 = dxy_close.ewm(span=50).mean()
+                    dxy_ema200 = dxy_close.ewm(span=200).mean()
+                    dxy_bull = dxy_ema50 > dxy_ema200
+                    dxy_bear = dxy_ema50 < dxy_ema200
+            except Exception as e:
+                print(f"DXY fetch error: {e}")
+
             for name, symbol in PAIRS.items():
                 try:
                     if name in open_pairs:
                         continue
                     df = get_data(symbol)
-                    setup = find_developing_setup(df)
+                    setup = find_developing_setup(df, name, dxy_bull, dxy_bear)
                     was_near = state.get(name, {}).get("near", False)
                     if setup and not was_near:
                         send_watchlist_alert(name, setup)
