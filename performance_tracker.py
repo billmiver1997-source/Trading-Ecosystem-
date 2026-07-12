@@ -29,11 +29,17 @@ STATS_FILE = "/root/tradingbot/trade_stats.json"
 SYMBOLS = {
     "USD/CAD": "USDCAD=X",
     "Oil/USD": "CL=F",
+    "NZD/USD": "NZDUSD=X",
+    "BTC/USD": "BTC-USD",
+    "SOL/USD": "SOL-USD",
 }
 
 PAIR_EMOJIS = {
     "USD/CAD": "\U0001f1e8\U0001f1e6",
     "Oil/USD": "\U0001f6e2",
+    "NZD/USD": "\U0001f1f3\U0001f1ff",
+    "BTC/USD": "\U0001f7e1",
+    "SOL/USD": "\U0001f535",
 }
 
 def load_users():

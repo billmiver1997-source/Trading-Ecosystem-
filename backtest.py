@@ -23,15 +23,46 @@ SIGNALS_CHANNEL = os.getenv("SIGNALS_CHANNEL")
 USERS_FILE = "/root/tradingbot/users.json"
 JOURNAL_FILE = "/root/tradingbot/journal.json"
 
-# Same two pairs as signal_strategy.py — kept in sync deliberately, this weekly report
+# Same pairs as signal_strategy.ALL_PAIRS — kept in sync deliberately, this weekly report
 # is an ongoing out-of-sample check on the exact strategy that's live, not a separate one.
 PAIRS = {
     "USD/CAD": "USDCAD=X",
     "Oil/USD": "CL=F",
+    "NZD/USD": "NZDUSD=X",
+    "BTC/USD": "BTC-USD",
+    "SOL/USD": "SOL-USD",
 }
 
-RR = 1.5  # matches signal_strategy.RR — VALIDATED via 90d backtest, do not
-# change without re-running the comparison first (see signal_strategy.py's RR comment).
+# Mirrors signal_strategy.PAIR_PARAMS exactly — see that file's comment for why each
+# pair's values are what they are. Do not change without re-running the comparison
+# backtest in both places.
+PAIR_PARAMS = {
+    "USD/CAD": {"tol_mult": 0.5, "sl_mult": 0.3, "rr": 1.5},
+    "Oil/USD": {"tol_mult": 0.5, "sl_mult": 0.3, "rr": 1.5},
+    "NZD/USD": {"tol_mult": 0.5, "sl_mult": 0.3, "rr": 1.2, "adx_min": 20},
+    "BTC/USD": {"tol_mult": 1.25, "sl_mult": 0.6, "rr": 1.75, "vol_min_ratio": 0.7},
+    "SOL/USD": {"tol_mult": 1.25, "sl_mult": 0.5, "rr": 1.75, "vol_min_ratio": 0.7},
+}
+
+RR = 1.5  # default/fallback only — the per-pair report uses PAIR_PARAMS[name]["rr"].
+
+
+def _wilder_smooth(series, period):
+    return series.ewm(alpha=1 / period, adjust=False).mean()
+
+
+def compute_adx(df, period=14):
+    high, low, close = df["High"], df["Low"], df["Close"]
+    up_move = high.diff()
+    down_move = -low.diff()
+    plus_dm = ((up_move > down_move) & (up_move > 0)) * up_move
+    minus_dm = ((down_move > up_move) & (down_move > 0)) * down_move
+    tr = pd.concat([high - low, (high - close.shift()).abs(), (low - close.shift()).abs()], axis=1).max(axis=1)
+    atr_w = _wilder_smooth(tr, period)
+    plus_di = 100 * _wilder_smooth(plus_dm, period) / atr_w
+    minus_di = 100 * _wilder_smooth(minus_dm, period) / atr_w
+    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di)
+    return _wilder_smooth(dx, period)
 
 
 def load_users():
@@ -81,7 +112,8 @@ def backtest_pair(name, symbol):
     """HTF trend (EMA50/200) + pullback-to-EMA20 + rejection confirmation — identical
     logic to signal_strategy.find_setup(), so this weekly report tracks the strategy
     that's actually live, not a stand-in. Entry at the open of the bar AFTER the
-    confirmation candle closes — no look-ahead bias."""
+    confirmation candle closes — no look-ahead bias. Per-pair tolerance/SL/RR and
+    optional ADX/volume filters come from PAIR_PARAMS, mirroring signal_strategy.py."""
     try:
         df = yf.Ticker(symbol).history(period="90d", interval="1h")
     except Exception as e:
@@ -98,12 +130,19 @@ def backtest_pair(name, symbol):
     if len(df) < 261:
         return None
 
+    params = PAIR_PARAMS.get(name, {"tol_mult": 0.5, "sl_mult": 0.3, "rr": RR})
+    tol_mult = params["tol_mult"]; sl_mult = params["sl_mult"]; rr = params["rr"]
+    adx_min = params.get("adx_min")
+    vol_min_ratio = params.get("vol_min_ratio")
+
     close = df["Close"]; high = df["High"]; low = df["Low"]; open_ = df["Open"]
     ema20 = close.ewm(span=20).mean()
     ema50 = close.ewm(span=50).mean()
     ema200 = close.ewm(span=200).mean()
     tr = pd.concat([high-low, (high-close.shift()).abs(), (low-close.shift()).abs()], axis=1).max(axis=1)
     atr = tr.rolling(14).mean()
+    adx = compute_adx(df) if adx_min is not None else None
+    vol = df["Volume"] if (vol_min_ratio is not None and "Volume" in df.columns) else None
 
     wins = losses = timeouts = ambiguous = 0
     total_R = 0.0
@@ -113,11 +152,23 @@ def backtest_pair(name, symbol):
         a = atr.iloc[i]
         if pd.isna(a) or a == 0:
             continue
+        if adx_min is not None:
+            adx_val = adx.iloc[i-1]
+            if pd.isna(adx_val) or adx_val <= adx_min:
+                continue
+        if vol_min_ratio is not None:
+            if vol is None:
+                continue
+            vol_avg = vol.iloc[max(0, i-20):i].mean()
+            if vol_avg == 0 or pd.isna(vol_avg) or pd.isna(vol.iloc[i-1]):
+                continue
+            if vol.iloc[i-1] < vol_avg * vol_min_ratio:
+                continue
 
         bull_trend = ema50.iloc[i] > ema200.iloc[i]
         bear_trend = ema50.iloc[i] < ema200.iloc[i]
         pull_low = low.iloc[i-1]; pull_high = high.iloc[i-1]
-        tol = atr.iloc[i - 1] * 0.5  # use pullback bar's own ATR for proximity tolerance
+        tol = atr.iloc[i - 1] * tol_mult  # use pullback bar's own ATR for proximity tolerance
 
         if bull_trend:
             touched = pull_low <= ema20.iloc[i-1] + tol
@@ -126,11 +177,11 @@ def backtest_pair(name, symbol):
             body_ratio = body / rng if rng > 0 else 0
             if touched and body > 0 and body_ratio > 0.5 and close.iloc[i] > ema20.iloc[i] and i+1 < n:
                 entry = open_.iloc[i+1]
-                sl = pull_low - a * 0.3
+                sl = pull_low - a * sl_mult
                 risk = entry - sl
                 if risk <= 0:
                     continue
-                tp = entry + risk * RR
+                tp = entry + risk * rr
                 resolved = False
                 for j in range(i+1, min(i+61, n)):
                     sl_hit = low.iloc[j] <= sl
@@ -140,7 +191,7 @@ def backtest_pair(name, symbol):
                     if sl_hit:
                         losses += 1; total_R -= 1; resolved = True; break
                     if tp_hit:
-                        wins += 1; total_R += RR; resolved = True; break
+                        wins += 1; total_R += rr; resolved = True; break
                 if not resolved:
                     timeouts += 1
                 continue
@@ -152,11 +203,11 @@ def backtest_pair(name, symbol):
             body_ratio = body / rng if rng > 0 else 0
             if touched and body > 0 and body_ratio > 0.5 and close.iloc[i] < ema20.iloc[i] and i+1 < n:
                 entry = open_.iloc[i+1]
-                sl = pull_high + a * 0.3
+                sl = pull_high + a * sl_mult
                 risk = sl - entry
                 if risk <= 0:
                     continue
-                tp = entry - risk * RR
+                tp = entry - risk * rr
                 resolved = False
                 for j in range(i+1, min(i+61, n)):
                     sl_hit = high.iloc[j] >= sl
@@ -166,7 +217,7 @@ def backtest_pair(name, symbol):
                     if sl_hit:
                         losses += 1; total_R -= 1; resolved = True; break
                     if tp_hit:
-                        wins += 1; total_R += RR; resolved = True; break
+                        wins += 1; total_R += rr; resolved = True; break
                 if not resolved:
                     timeouts += 1
 
@@ -224,7 +275,7 @@ def run_backtest():
 
     best = results[0]
     lines.append("\n🏆 Best pair: " + best["name"] + " (" + str(best["winrate"]) + "% | " + str(best["signals"]) + " signals)")
-    lines.append("Strategy: Pullback to EMA20 + confirmation | 1H | R:R 1:" + str(RR))
+    lines.append("Strategy: Pullback to EMA20 + confirmation | 1H | R:R set per pair (1.2-1.75)")
 
     send_all("\n".join(lines))
     print("Backtest report sent!")
@@ -241,7 +292,7 @@ def run_backtest():
 
 
 def main():
-    print("Backtest bot started (pullback strategy, USD/CAD + Oil/USD)...")
+    print("Backtest bot started (pullback strategy, USD/CAD + Oil/USD + NZD/USD + BTC/USD + SOL/USD)...")
     sent_this_week = ""
     while True:
         try:

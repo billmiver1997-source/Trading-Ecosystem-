@@ -26,28 +26,64 @@ LAST_SIGNAL_LOCK_PATH = LAST_SIGNAL_FILE + ".lock"
 
 # Strategy: HTF trend (EMA50/EMA200) + pullback to EMA20 + rejection confirmation candle.
 # Backtested on 90d of 1H data across all 11 previously-traded pairs (no lookahead —
-# entries fire at the open of the bar AFTER the confirmation candle closes). Only these
-# two pairs showed a real, out-of-sample-consistent positive edge; the other 9 (incl.
-# XAU/USD, EUR/USD, GBP/USD which were the biggest live losers) were flat or negative
-# in a first-half/second-half split test and were dropped rather than "fixed".
+# entries fire at the open of the bar AFTER the confirmation candle closes). Only USD/CAD
+# and Oil/USD showed a real, out-of-sample-consistent positive edge in that first pass;
+# the other 9 (incl. XAU/USD, EUR/USD, GBP/USD which were the biggest live losers) were
+# flat or negative in a first-half/second-half split test and were dropped rather than
+# "fixed". A second round (2026-07) tested 6 majors + EUR/CHF + 3 metals + BTC/SOL with
+# category-specific tweaks (ADX filter, DXY correlation, volume filter, tuned RR/buffers)
+# — only NZD/USD (majors, +ADX>20 filter) and BTC/USD + SOL/USD (crypto, +volume filter)
+# cleared the same bar. EUR/USD, GBP/USD, USD/CHF, USD/JPY, AUD/USD, EUR/CHF, XAU/USD,
+# Silver/USD and Copper/USD were all negative or half-inconsistent even after tuning and
+# were NOT added. See PAIR_PARAMS below for the per-pair validated parameters.
 ALL_PAIRS = {
     "USD/CAD": "USDCAD=X",
     "Oil/USD": "CL=F",
+    "NZD/USD": "NZDUSD=X",
+    "BTC/USD": "BTC-USD",
+    "SOL/USD": "SOL-USD",
 }
+
+# Pairs that trade 24/7 — skip the liquid-FX-hours session gate for these only.
+CRYPTO_PAIRS = {"BTC/USD", "SOL/USD"}
 
 PAIR_CURRENCIES = {
     "USD/CAD": ["USD", "CAD"],
     "Oil/USD": ["USD"],
+    "NZD/USD": ["NZD", "USD"],
+    "BTC/USD": ["USD"],
+    "SOL/USD": ["USD"],
 }
 
-RR = 1.5  # VALIDATED via 90d backtest (both split-half + full-window) — do NOT change
-# without re-running the comparison backtest first. RR=2.0 + wider SL buffers were
-# tried and both backtested significantly worse for both live pairs (USD/CAD 52R->24R,
-# Oil/USD 36R->19R over the same 90d window). 1.5 is deliberate, not an unfinished 1:2.
+RR = 1.5  # default/fallback only — each pair's real RR lives in PAIR_PARAMS below.
+
+# VALIDATED per-pair parameters (90d 1H backtest, split-half consistency required — see
+# ALL_PAIRS comment above for what was tried and rejected). Do NOT change any pair's
+# values without re-running the comparison backtest first:
+#   USD/CAD / Oil/USD: RR=1.5, tol=0.5x ATR, SL buffer=0.3x ATR — the original validated pair.
+#   NZD/USD: RR=1.2 (2.0/1.8 decayed hard in the 2nd half — 1.2 split +16.2R/+11.6R, most
+#     even). Requires ADX(14) > 20 on the pullback bar — without it, net R is similar but
+#     front-loaded (+23.2R/+5.0R), i.e. weaker out-of-sample confidence, not a bigger edge.
+#   BTC/USD: RR=1.75, wider tol=1.25x ATR + SL buffer=0.6x ATR (crypto's larger natural
+#     swings need more room). Requires volume >= 70% of its own 20-bar average on the
+#     pullback bar — without it, net R looks bigger (+35R) but is badly front-loaded
+#     (+27.5R/+7.75R); with the filter it's +9.75R/+8.25R, a much more even, trustworthy split.
+#   SOL/USD: RR=1.75, tol=1.25x ATR, SL buffer=0.5x ATR. The volume filter isn't optional
+#     here — without it the first half is net NEGATIVE (-24.75R) and the pair fails outright.
+PAIR_PARAMS = {
+    "USD/CAD": {"tol_mult": 0.5, "sl_mult": 0.3, "rr": 1.5},
+    "Oil/USD": {"tol_mult": 0.5, "sl_mult": 0.3, "rr": 1.5},
+    "NZD/USD": {"tol_mult": 0.5, "sl_mult": 0.3, "rr": 1.2, "adx_min": 20},
+    "BTC/USD": {"tol_mult": 1.25, "sl_mult": 0.6, "rr": 1.75, "vol_min_ratio": 0.7},
+    "SOL/USD": {"tol_mult": 1.25, "sl_mult": 0.5, "rr": 1.75, "vol_min_ratio": 0.7},
+}
 
 PAIR_EMOJIS = {
     "USD/CAD": "\U0001f1e8\U0001f1e6",
     "Oil/USD": "⛽",
+    "NZD/USD": "\U0001f1f3\U0001f1ff",
+    "BTC/USD": "\U0001f7e1",
+    "SOL/USD": "\U0001f535",
 }
 
 # Cumulative wins/losses per pair (since this strategy's stats were reset) below this
@@ -98,12 +134,33 @@ def get_session_label():
 
 def is_trading_session():
     """Liquid FX/commodity hours — Athens weekdays 10:00-23:00. Execution-quality
-    filter, not part of the backtested edge (the backtest didn't restrict by hour)."""
+    filter, not part of the backtested edge (the backtest didn't restrict by hour).
+    Does NOT apply to CRYPTO_PAIRS — those trade 24/7, see main()."""
     tz = pytz.timezone("Europe/Athens")
     now = datetime.now(tz)
     if now.weekday() >= 5:
         return False
     return 10 <= now.hour < 23
+
+
+def _wilder_smooth(series, period):
+    """Wilder's smoothing == an EWM with alpha=1/period — matches market_regime.py's
+    ADX exactly so the NZD/USD filter uses the same definition traders reference."""
+    return series.ewm(alpha=1 / period, adjust=False).mean()
+
+
+def compute_adx(df, period=14):
+    high, low, close = df["High"], df["Low"], df["Close"]
+    up_move = high.diff()
+    down_move = -low.diff()
+    plus_dm = ((up_move > down_move) & (up_move > 0)) * up_move
+    minus_dm = ((down_move > up_move) & (down_move > 0)) * down_move
+    tr = pd.concat([high - low, (high - close.shift()).abs(), (low - close.shift()).abs()], axis=1).max(axis=1)
+    atr_w = _wilder_smooth(tr, period)
+    plus_di = 100 * _wilder_smooth(plus_dm, period) / atr_w
+    minus_di = 100 * _wilder_smooth(minus_dm, period) / atr_w
+    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di)
+    return _wilder_smooth(dx, period)
 
 
 def send_signal_photo(msg, photo_path):
@@ -167,9 +224,16 @@ def find_setup(df, name):
     """HTF trend + pullback-to-EMA20 + rejection confirmation. Mirrors backtest_v2.py
     exactly so live behavior matches what was validated: the confirmation candle is the
     last CLOSED candle (iloc[-2]); entry is the current live price (iloc[-1], the bar
-    that opened right after confirmation closed) — no lookahead."""
+    that opened right after confirmation closed) — no lookahead. Per-pair tolerance/SL/RR
+    and optional ADX or volume filters come from PAIR_PARAMS — see its comment for why
+    each pair's values are what they are."""
     if df is None or len(df) < 210:
         return None
+
+    params = PAIR_PARAMS.get(name, {"tol_mult": 0.5, "sl_mult": 0.3, "rr": RR})
+    tol_mult = params["tol_mult"]; sl_mult = params["sl_mult"]; rr = params["rr"]
+    adx_min = params.get("adx_min")
+    vol_min_ratio = params.get("vol_min_ratio")
 
     close = df["Close"]; high = df["High"]; low = df["Low"]; open_ = df["Open"]
     ema20 = close.ewm(span=20).mean()
@@ -183,6 +247,21 @@ def find_setup(df, name):
     if pd.isna(a) or a == 0:
         return None
 
+    if adx_min is not None:
+        adx_val = compute_adx(df).iloc[i - 1]
+        if pd.isna(adx_val) or adx_val <= adx_min:
+            return None
+
+    if vol_min_ratio is not None:
+        vol = df["Volume"] if "Volume" in df.columns else None
+        if vol is None:
+            return None  # can't validate the filter — skip rather than trade unfiltered
+        vol_avg = vol.iloc[max(0, i - 20):i].mean()
+        if vol_avg == 0 or pd.isna(vol_avg) or pd.isna(vol.iloc[i - 1]):
+            return None
+        if vol.iloc[i - 1] < vol_avg * vol_min_ratio:
+            return None
+
     price = close.iloc[-1]
     confirm_bar_time = df.index[i].isoformat()
 
@@ -192,7 +271,7 @@ def find_setup(df, name):
     pull_low = low.iloc[i - 1]; pull_high = high.iloc[i - 1]
     if pd.isna(atr.iloc[i - 1]):
         return None
-    tol = atr.iloc[i - 1] * 0.5  # use pullback bar's own ATR for proximity tolerance
+    tol = atr.iloc[i - 1] * tol_mult  # use pullback bar's own ATR for proximity tolerance
 
     if bull_trend:
         touched = pull_low <= ema20.iloc[i - 1] + tol
@@ -200,11 +279,11 @@ def find_setup(df, name):
         rng = high.iloc[i] - low.iloc[i]
         body_ratio = body / rng if rng > 0 else 0
         if touched and body > 0 and body_ratio > 0.5 and close.iloc[i] > ema20.iloc[i]:
-            sl = round(pull_low - a * 0.3, 5)
+            sl = round(pull_low - a * sl_mult, 5)
             risk = price - sl
             if risk <= 0:
                 return None
-            tp = round(price + risk * RR, 5)
+            tp = round(price + risk * rr, 5)
             return {
                 "bias": "BULLISH", "price": price, "sl": sl, "tp": tp,
                 "confirm_bar_time": confirm_bar_time,
@@ -217,11 +296,11 @@ def find_setup(df, name):
         rng = high.iloc[i] - low.iloc[i]
         body_ratio = body / rng if rng > 0 else 0
         if touched and body > 0 and body_ratio > 0.5 and close.iloc[i] < ema20.iloc[i]:
-            sl = round(pull_high + a * 0.3, 5)
+            sl = round(pull_high + a * sl_mult, 5)
             risk = sl - price
             if risk <= 0:
                 return None
-            tp = round(price - risk * RR, 5)
+            tp = round(price - risk * rr, 5)
             return {
                 "bias": "BEARISH", "price": price, "sl": sl, "tp": tp,
                 "confirm_bar_time": confirm_bar_time,
@@ -328,16 +407,16 @@ def get_news_blocked_currencies():
 
 
 def main():
-    print("Pullback strategy started (1H timeframe, USD/CAD + Oil/USD)...")
+    print("Pullback strategy started (1H timeframe, USD/CAD + Oil/USD + NZD/USD + BTC/USD + SOL/USD)...")
     tripped_alerted = set()
     news_blocked: set = set()
 
     while True:
         try:
-            if not is_trading_session():
-                print("Outside trading session - sleeping...")
-                time.sleep(3600)
-                continue
+            # FX/commodity pairs only trade during liquid hours; CRYPTO_PAIRS trade 24/7,
+            # so unlike before this can no longer globally skip the whole cycle — the
+            # per-pair check below decides individually.
+            session_open = is_trading_session()
 
             news_blocked = get_news_blocked_currencies()
 
@@ -346,6 +425,9 @@ def main():
 
             for name, symbol in ALL_PAIRS.items():
                 try:
+                    if name not in CRYPTO_PAIRS and not session_open:
+                        continue
+
                     if name in open_pairs:
                         continue
 
