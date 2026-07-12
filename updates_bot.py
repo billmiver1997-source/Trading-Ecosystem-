@@ -48,11 +48,48 @@ def _save_cursors():
     except Exception as e:
         print(f"save cursors error: {e}")
 
-def _next_photo(category, pool):
+def _next_item(category, pool):
     idx = _img_cursors.get(category, 0)
     _img_cursors[category] = (idx + 1) % len(pool)
     _save_cursors()
     return pool[idx]
+
+# kept as an alias — same rotation logic, used for photo pools specifically
+_next_photo = _next_item
+
+POLLS = [
+    {"q": "🌍 Favorite session to trade?", "options": ["🇯🇵 Tokyo", "🇬🇧 London", "🇺🇸 New York", "London/NY overlap"]},
+    {"q": "😅 Biggest trading mistake you're guilty of?", "options": ["Overtrading", "No stop loss", "Revenge trading", "FOMO entries"]},
+    {"q": "⏱ Which timeframe do you trade most?", "options": ["Scalping (1m-15m)", "Swing (1h-4h)", "Position (Daily+)"]},
+    {"q": "📊 How do you feel about the markets today?", "options": ["🟢 Bullish", "🔴 Bearish", "🟡 Neutral", "🤷 Not sure"]},
+    {"q": "🎯 What's your risk per trade?", "options": ["Under 1%", "1-2%", "2-5%", "Over 5%"]},
+    {"q": "💹 Favorite asset class?", "options": ["Forex", "Crypto", "Commodities", "Indices"]},
+    {"q": "📰 Do you trade around big news events?", "options": ["Always", "Sometimes", "Never", "Only NFP/CPI"]},
+    {"q": "🕰 How long have you been trading?", "options": ["Under 1 year", "1-3 years", "3-5 years", "5+ years"]},
+    {"q": "🧠 What breaks your discipline most?", "options": ["FOMO", "Boredom", "Revenge trading", "Overconfidence"]},
+    {"q": "📈 Which tool do you trust most?", "options": ["EMA/Moving Averages", "RSI", "Support/Resistance", "Pure price action"]},
+    {"q": "💰 Demo or live account?", "options": ["Still on demo", "Live, small size", "Live, full size"]},
+    {"q": "🎯 What's your main trading goal?", "options": ["Extra income", "Full-time career", "Learning/hobby", "Building long-term wealth"]},
+    {"q": "📓 How do you journal your trades?", "options": ["Every single trade", "Only losses", "Rarely", "I don't"]},
+    {"q": "📅 Best day of the week for you to trade?", "options": ["Monday", "Tue-Thu", "Friday", "Doesn't matter"]},
+    {"q": "🤔 What's harder for you?", "options": ["Entries", "Exits", "Both equally", "Staying disciplined after"]},
+    {"q": "💛 Which pair moves you emotionally the most?", "options": ["XAU/USD (Gold)", "BTC/USD", "USD/JPY", "EUR/USD"]},
+    {"q": "📉 How do you handle a losing streak?", "options": ["Stop and reassess", "Reduce size", "Push through it", "Take a full break"]},
+    {"q": "🕯 Preferred chart type?", "options": ["Candlesticks", "Line chart", "Heikin Ashi", "Something else"]},
+    {"q": "🧩 What's your real edge?", "options": ["Technical analysis", "Fundamentals", "Smart Money Concepts", "Experience + gut feel"]},
+    {"q": "👀 How many pairs do you actually watch daily?", "options": ["Just 1-2", "3-5", "6-10", "More than 10"]},
+]
+
+def community_poll():
+    poll = _next_item("poll", POLLS)
+    try:
+        r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPoll",
+            json={"chat_id": CHANNEL_ID, "question": poll["q"], "options": poll["options"],
+                  "is_anonymous": True, "type": "regular"}, timeout=10)
+        r.raise_for_status()
+        print("Poll sent!")
+    except Exception as e:
+        print("Poll error: "+str(e))
 
 def send(msg, photo_name=None):
     cap = msg[:1024]
@@ -176,6 +213,7 @@ def main():
         schedule.every().monday.at("05:00", "Europe/Athens").do(weekly_preview)
         schedule.every().friday.at("17:00", "Europe/Athens").do(weekly_summary)
         schedule.every().sunday.at("15:00", "Europe/Athens").do(psychology_post)
+        schedule.every().day.at("20:00", "Europe/Athens").do(community_poll)
     except TypeError:
         # schedule >= 1.2.0 is required for timezone support; fall back to bare times
         print("WARNING: schedule>=1.2.0 required for timezone support; jobs will run in server local time")
@@ -184,6 +222,7 @@ def main():
         schedule.every().monday.at("05:00").do(weekly_preview)
         schedule.every().friday.at("17:00").do(weekly_summary)
         schedule.every().sunday.at("15:00").do(psychology_post)
+        schedule.every().day.at("20:00").do(community_poll)
 
     print("Updates Bot started!")
     while True:
