@@ -86,6 +86,10 @@ def track_user(user, bot_name="main"):
                 users[uid]["visits"] = users[uid].get("visits", 0) + 1
                 users[uid]["username"] = "@"+user.username if user.username else "no_username"
                 users[uid]["first_name"] = user.first_name or ""
+                # Backfill/refresh provenance on every touch, not just creation — pre-existing
+                # entries from before this field existed (or seeded some other way) would
+                # otherwise stay mislabeled forever even after a real main-bot interaction.
+                users[uid]["bot"] = bot_name
             save_users(users)
             return is_new, users[uid]
         finally:
