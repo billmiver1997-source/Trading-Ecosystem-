@@ -253,7 +253,11 @@ def _check_trades_inner(price_cache):
                     f"Entry: {round(entry,5)}  ➡️  Current: {round(price,5)}\n"
                     f"SL moved to entry — risk = 0 ✅"
                 )
-                photo_path = chart.make_result_chart(name, symbol, signal, entry, trade["sl"], tp, trade.get("time", time.time()), "BE") if chart is not None else None
+                try:
+                    photo_path = chart.make_result_chart(name, symbol, signal, entry, trade["sl"], tp, trade.get("time", time.time()), "BE") if chart is not None else None
+                except Exception as chart_err:
+                    print(f"BE chart error {name}: {chart_err}")
+                    photo_path = None
                 send_result_photo(photo_path, be_msg, sig_msg_id)
             elif signal == "SELL" and price <= entry - half_move and sl > entry + 1e-5:
                 trade["sl"] = round(entry, 5)
@@ -266,7 +270,11 @@ def _check_trades_inner(price_cache):
                     f"Entry: {round(entry,5)}  ➡️  Current: {round(price,5)}\n"
                     f"SL moved to entry — risk = 0 ✅"
                 )
-                photo_path = chart.make_result_chart(name, symbol, signal, entry, trade["sl"], tp, trade.get("time", time.time()), "BE") if chart is not None else None
+                try:
+                    photo_path = chart.make_result_chart(name, symbol, signal, entry, trade["sl"], tp, trade.get("time", time.time()), "BE") if chart is not None else None
+                except Exception as chart_err:
+                    print(f"BE chart error {name}: {chart_err}")
+                    photo_path = None
                 send_result_photo(photo_path, be_msg, sig_msg_id)
 
         if tp_hit:
@@ -322,7 +330,11 @@ def _check_trades_inner(price_cache):
                 "Profit: +" + str(pips_display) + " " + pips_unit + " \U0001f7e2\n\n"
                 "\U0001f4ca " + str(stats["wins"]) + "W / " + str(stats["losses"]) + "L | WR: " + str(winrate) + "%"
             )
-            photo_path = chart.make_result_chart(name, symbol, signal, entry, sl, tp, entry_time, "WIN") if chart is not None else None
+            try:
+                photo_path = chart.make_result_chart(name, symbol, signal, entry, sl, tp, entry_time, "WIN") if chart is not None else None
+            except Exception as chart_err:
+                print(f"Result chart error {name} (WIN): {chart_err}")
+                photo_path = None
             send_result_photo(photo_path, msg, sig_msg_id)
             print("TP hit: " + name)
             _append_journal({"pair":name,"side":signal,"result":"WIN","pips":"+"+str(round(pips,4)),"note":"Auto - TP Hit","date":now,
@@ -336,7 +348,11 @@ def _check_trades_inner(price_cache):
                 + signal + ": Entry " + str(round(entry, 5)) + "\n"
                 "SL hit at entry — capital protected"
             )
-            photo_path = chart.make_result_chart(name, symbol, signal, entry, sl, tp, entry_time, "BE") if chart is not None else None
+            try:
+                photo_path = chart.make_result_chart(name, symbol, signal, entry, sl, tp, entry_time, "BE") if chart is not None else None
+            except Exception as chart_err:
+                print(f"Result chart error {name} (BE-close): {chart_err}")
+                photo_path = None
             send_result_photo(photo_path, msg, sig_msg_id)
             print("BE closed: " + name)
             _append_journal({"pair":name,"side":signal,"result":"BE","pips":"0","note":"Auto - Breakeven","date":now,
@@ -359,7 +375,11 @@ def _check_trades_inner(price_cache):
                 "Loss: -" + str(pips_display) + " " + pips_unit + " \U0001f534\n\n"
                 "\U0001f4ca " + str(stats["wins"]) + "W / " + str(stats["losses"]) + "L | WR: " + str(winrate) + "%"
             )
-            photo_path = chart.make_result_chart(name, symbol, signal, entry, sl, tp, entry_time, "LOSS") if chart is not None else None
+            try:
+                photo_path = chart.make_result_chart(name, symbol, signal, entry, sl, tp, entry_time, "LOSS") if chart is not None else None
+            except Exception as chart_err:
+                print(f"Result chart error {name} (LOSS): {chart_err}")
+                photo_path = None
             send_result_photo(photo_path, msg, sig_msg_id)
             print("SL hit: " + name)
             _append_journal({"pair":name,"side":signal,"result":"LOSS","pips":"-"+str(round(pips,4)),"note":"Auto - SL Hit","date":now,

@@ -287,8 +287,11 @@ def run_backtest():
         print(f"journal load error for equity chart: {e}")
         journal_entries = []
     if journal_entries and chart is not None:
-        equity_path = chart.make_equity_chart(journal_entries, rr=RR)
-        send_channel_photo(equity_path, caption="📈 Equity curve — all closed trades to date")
+        try:
+            equity_path = chart.make_equity_chart(journal_entries, rr=RR)
+            send_channel_photo(equity_path, caption="📈 Equity curve — all closed trades to date")
+        except Exception as chart_err:
+            print(f"equity chart error: {chart_err}")
 
 
 def main():
