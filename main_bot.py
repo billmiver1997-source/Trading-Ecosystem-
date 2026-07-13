@@ -52,6 +52,8 @@ def save_users(users):
     try:
         with open(tmp, 'w') as f:
             json.dump(list(users.values()), f, indent=2, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(tmp, USERS_FILE)
     except Exception as e:
         print(f"save_users error: {e}")
@@ -232,6 +234,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
         return
     text = update.message.text
+    try:
+        await asyncio.to_thread(track_user, update.effective_user)
+    except Exception as e:
+        print(f"handle_message track_user error: {e}")
 
     if text == "\U0001f519 Back":
         await update.message.reply_text("Main menu:", reply_markup=main_menu())

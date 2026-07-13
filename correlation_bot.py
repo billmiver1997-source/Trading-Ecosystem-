@@ -55,7 +55,7 @@ def build_correlation_matrix(lookback_days=30):
             # exchange timezone in the index — combining them without normalizing
             # to date-only left almost every cross-asset pair correlation as NaN
             # (pandas aligns on the exact timestamp, not the calendar day).
-            series.index = series.index.tz_localize(None).normalize()
+            series.index = series.index.tz_localize(None).normalize() if series.index.tz is not None else series.index.normalize()
             closes[name] = series.iloc[-lookback_days:]
         except Exception as e:
             print(f"correlation fetch error {name}: {e}")

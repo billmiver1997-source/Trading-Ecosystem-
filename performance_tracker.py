@@ -314,7 +314,7 @@ def _check_trades_inner(price_cache):
         dur = f"{open_mins//60}h {open_mins%60}min" if open_mins >= 60 else f"{open_mins}min"
 
         if result == "WIN":
-            _is_raw = any(k in name for k in ("XAU", "BTC", "SOL", "Silver", "Oil", "Copper"))
+            _is_raw = any(k in name for k in ("BTC", "SOL", "Oil"))
             pips_display = round(pips * (100 if "JPY" in name else 10000), 1) if not _is_raw else round(pips, 4)
             stats["wins"] += 1
             stats["total_pips"] += pips_display  # store scaled pips, not raw price diff
@@ -359,7 +359,7 @@ def _check_trades_inner(price_cache):
                               "symbol":symbol,"entry":entry,"sl":sl,"tp":tp,"entry_time":entry_time,"close_time":time.time()})
 
         else:  # LOSS
-            _is_raw = any(k in name for k in ("XAU", "BTC", "SOL", "Silver", "Oil", "Copper"))
+            _is_raw = any(k in name for k in ("BTC", "SOL", "Oil"))
             pips_display = round(pips * (100 if "JPY" in name else 10000), 1) if not _is_raw else round(pips, 4)
             stats["losses"] += 1
             stats["total_pips"] -= pips_display  # store scaled pips, not raw price diff

@@ -33,9 +33,13 @@ _anthropic_lock = Lock()
 _analysis_cache = {}  # pair_name -> (timestamp, result_text)
 _analysis_cache_lock = Lock()
 _ANALYSIS_TTL = 900   # 15 minutes
+_qa_last_time = {}    # chat_id -> last Q&A timestamp (per-user rate limiting)
+_qa_cooldown = 30     # seconds between free-form Q&A calls per user
 
 def _get_anthropic():
     global _anthropic_client
+    if not ANTHROPIC_API_KEY:
+        return None  # skip API call immediately rather than failing at the API roundtrip
     with _anthropic_lock:
         if _anthropic_client is None:
             _anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -66,10 +70,9 @@ ALIASES = {
 WELCOME = (
     "\U0001f4c8 Welcome to Trading Nova Signal\n\n"
     "This is your trading command centre. Live signals, AI analysis, market sentiment, news, risk tools \u2014 all in one place.\n\n"
-    "Signals cover 12 instruments:\n"
-    "\U0001fa99 XAU/USD \u2022 \U0001f1ea\U0001f1fa EUR/USD \u2022 \U0001f1ec\U0001f1e7 GBP/USD\n"
-    "\U0001f7e1 BTC/USD \u2022 \U0001f535 SOL/USD \u2022 \u26fd Oil/USD\n"
-    "USD/JPY \u2022 USD/CHF \u2022 AUD/USD \u2022 USD/CAD \u2022 NZD/USD \u2022 Silver\n\n"
+    "Live signals cover 5 validated instruments:\n"
+    "\U0001f1e8\U0001f1e6 USD/CAD \u2022 \u26fd Oil/USD \u2022 \U0001f1f3\U0001f1ff NZD/USD\n"
+    "\U0001f7e1 BTC/USD \u2022 \U0001f535 SOL/USD\n\n"
     "Signals are sent only when a high-quality setup is confirmed \u2014 not on a fixed schedule, not for the sake of activity.\n\n"
     "Use the menu below to explore what's available \U0001f447\n\n"
     "\u26a0\ufe0f All signals and content are for educational purposes only. Not financial advice. "
@@ -90,6 +93,8 @@ def save_users(users):
     try:
         with open(tmp, 'w') as f:
             json.dump(users, f)
+            f.flush()
+            os.fsync(f.fileno())  # ensure bytes reach disk before atomic rename
         os.replace(tmp, USERS_FILE)
     except Exception as e:
         print(f"save_users error: {e}")
@@ -120,6 +125,8 @@ def save_profile(user_id, username, first_name):
                 try:
                     with open(tmp, 'w') as f:
                         json.dump(profiles, f)
+                        f.flush()
+                        os.fsync(f.fileno())  # ensure bytes reach disk before atomic rename
                     os.replace(tmp, PROFILES_FILE)
                 except Exception as e:
                     print(f"save_profile error: {e}")
@@ -150,6 +157,8 @@ def _update_personal_journal(chat_id_str, mutate_fn):
             tmp = PERSONAL_JOURNAL_FILE + '.tmp'
             with open(tmp, 'w') as f:
                 json.dump(journal, f)
+                f.flush()
+                os.fsync(f.fileno())  # ensure bytes reach disk before atomic rename
             os.replace(tmp, PERSONAL_JOURNAL_FILE)
         except Exception as e:
             print(f"update_personal_journal error: {e}")
@@ -722,8 +731,8 @@ def handle_message(chat_id, text, username, first_name=""):
                 send_message(chat_id, "💼 PORTFOLIO\n\nNo open signals right now.", main_menu())
             else:
                 _pip_sizes = {
-                    "XAU/USD": 0.01, "Silver/USD": 0.001, "Oil/USD": 0.01,
-                    "BTC/USD": 1.0, "SOL/USD": 0.01, "DXY": 0.001,
+                    "XAU/USD": 0.01, "Silver/USD": 0.001, "Copper/USD": 0.001,
+                    "Oil/USD": 0.01, "BTC/USD": 1.0, "SOL/USD": 0.01, "DXY": 0.001,
                 }
 
                 def _fetch_pl(t):
@@ -1120,33 +1129,41 @@ def handle_message(chat_id, text, username, first_name=""):
             print(f"S&R handler error: {e}")
             send_message(chat_id, "📍 S&R levels temporarily unavailable.", main_menu())
 
-    elif len(text.strip()) >= 4:
-        # Free-form question — anything that didn't match a known command/button
-        # and isn't just noise gets a general AI answer instead of "use the menu".
-        send_typing(chat_id)
-        try:
-            client = _get_anthropic()
-            message = client.messages.create(
-                model="claude-haiku-4-5-20251001",
-                max_tokens=300,
-                system=(
-                    "You are the Trading Nova assistant, answering a free-form question in a "
-                    "trading Telegram bot. Be direct and concise (under 120 words). Respond in "
-                    "plain text only — no markdown, no asterisks, no numbered-list formatting "
-                    "symbols. If the question is really asking for a specific pair's live "
-                    "analysis, mention they can use /analysis <pair> for a chart-based read — "
-                    "only suggest a pair name from this exact supported list, never a ticker "
-                    "outside it: EURUSD, GBPUSD, USDCHF, AUDUSD, USDCAD, NZDUSD, USDJPY, XAUUSD, "
-                    "SILVER, COPPER, OIL, BTC, SOL, DXY. If it's off-topic for trading/markets, "
-                    "answer briefly and naturally anyway — don't refuse or lecture about scope."
-                ),
-                messages=[{"role": "user", "content": text[:500]}],
-            )
-            answer = message.content[0].text if message.content else None
-            send_message(chat_id, answer or "Couldn't come up with an answer for that — try rephrasing?", main_menu())
-        except Exception as e:
-            print(f"Free-form Q&A error: {e}")
-            send_message(chat_id, "Couldn't reach the AI just now — try again in a moment, or use the menu below:", main_menu())
+    elif len(text.strip()) >= 10:
+        # Free-form question — anything that didn't match a known command/button.
+        # Minimum 10 chars to skip accidental taps; per-user 30s cooldown to cap API cost.
+        now_ts = time.time()
+        last_qa = _qa_last_time.get(chat_id, 0)
+        if now_ts - last_qa < _qa_cooldown:
+            send_message(chat_id, "Please wait a moment before asking another question.", main_menu())
+        elif not ANTHROPIC_API_KEY:
+            send_message(chat_id, "AI assistant is currently unavailable. Use the menu for live data.", main_menu())
+        else:
+            _qa_last_time[chat_id] = now_ts
+            send_typing(chat_id)
+            try:
+                client = _get_anthropic()
+                message = client.messages.create(
+                    model="claude-haiku-4-5-20251001",
+                    max_tokens=300,
+                    system=(
+                        "You are the Trading Nova assistant, answering a free-form question in a "
+                        "trading Telegram bot. Be direct and concise (under 120 words). Respond in "
+                        "plain text only — no markdown, no asterisks, no numbered-list formatting "
+                        "symbols. If the question is really asking for a specific pair's live "
+                        "analysis, mention they can use /analysis <pair> for a chart-based read — "
+                        "only suggest a pair name from this exact supported list, never a ticker "
+                        "outside it: EURUSD, GBPUSD, USDCHF, AUDUSD, USDCAD, NZDUSD, USDJPY, XAUUSD, "
+                        "SILVER, COPPER, OIL, BTC, SOL, DXY. If it's off-topic for trading/markets, "
+                        "answer briefly and naturally anyway — don't refuse or lecture about scope."
+                    ),
+                    messages=[{"role": "user", "content": text[:500]}],
+                )
+                answer = message.content[0].text if message.content else None
+                send_message(chat_id, answer or "Couldn't come up with an answer for that — try rephrasing?", main_menu())
+            except Exception as e:
+                print(f"Free-form Q&A error: {e}")
+                send_message(chat_id, "Couldn't reach the AI just now — try again in a moment, or use the menu below:", main_menu())
 
     else:
         send_message(chat_id, "Use the menu below:", main_menu())

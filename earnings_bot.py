@@ -146,7 +146,10 @@ def main():
                 if send_all(msg) > 0 or not users:
                     sent_today = today
                     print("Earnings sent! "+str(len(earnings))+" companies")
-                time.sleep(600)
+                    time.sleep(600)
+                else:
+                    # send failed — retry within the 7:00-7:09 window
+                    time.sleep(60)
             else:
                 time.sleep(300)
 

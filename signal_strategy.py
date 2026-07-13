@@ -159,7 +159,8 @@ def compute_adx(df, period=14):
     atr_w = _wilder_smooth(tr, period)
     plus_di = 100 * _wilder_smooth(plus_dm, period) / atr_w
     minus_di = 100 * _wilder_smooth(minus_dm, period) / atr_w
-    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di)
+    denom = (plus_di + minus_di).replace(0, float('nan'))
+    dx = (100 * (plus_di - minus_di).abs() / denom).fillna(0)  # 0 DI sum = no trend, ADX=0
     return _wilder_smooth(dx, period)
 
 
@@ -256,7 +257,8 @@ def find_setup(df, name):
         vol = df["Volume"] if "Volume" in df.columns else None
         if vol is None:
             return None  # can't validate the filter — skip rather than trade unfiltered
-        vol_avg = vol.iloc[max(0, i - 20):i].mean()
+        # Exclude the pullback bar (i-1) from its own baseline to avoid self-referential inflation
+        vol_avg = vol.iloc[max(0, i - 21):i - 1].mean()
         if vol_avg == 0 or pd.isna(vol_avg) or pd.isna(vol.iloc[i - 1]):
             return None
         if vol.iloc[i - 1] < vol_avg * vol_min_ratio:
@@ -508,6 +510,8 @@ def main():
 
         except Exception as e:
             print(f"Main error: {e}")
+            time.sleep(300)  # short recovery sleep on exception; avoid missing next crypto candle
+            continue
 
         time.sleep(3600)
 

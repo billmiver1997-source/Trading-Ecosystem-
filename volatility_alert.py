@@ -102,8 +102,10 @@ def send_alert(name, data):
         )
         r.raise_for_status()
         print(f"Volatility alert sent: {name} ({data['pct']}%)")
+        return True
     except Exception as e:
         print(f"send_alert error {name}: {e}")
+        return False
 
 
 def main():
@@ -121,8 +123,8 @@ def main():
                 was_alerting = state.get(name, {}).get("alerting", False)
                 is_high = data["pct"] > HIGH_THRESHOLD
                 if is_high and not was_alerting:
-                    send_alert(name, data)
-                    state[name] = {"alerting": True}
+                    if send_alert(name, data):
+                        state[name] = {"alerting": True}
                     state_changed = True
                 elif not is_high and was_alerting:
                     # Dropped back under threshold — allow a fresh alert if it spikes again

@@ -50,7 +50,8 @@ def compute_adx(df, period=14):
 
     plus_di = 100 * _wilder_smooth(plus_dm, period) / atr
     minus_di = 100 * _wilder_smooth(minus_dm, period) / atr
-    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di)
+    denom = (plus_di + minus_di).replace(0, float('nan'))
+    dx = (100 * (plus_di - minus_di).abs() / denom).fillna(0)  # 0 DI sum = no trend, ADX=0
     adx = _wilder_smooth(dx, period)
     return adx, plus_di, minus_di
 
@@ -67,6 +68,8 @@ def classify_regime(df):
     bb_std = close.rolling(20).std()
     bb_width = (4 * bb_std) / bb_mean  # (upper-lower)/mean
     width_now = bb_width.iloc[-1]
+    if pd.isna(width_now):
+        return None
     width_percentile = (bb_width.iloc[-100:] < width_now).mean() if len(bb_width) >= 100 else 0.5
 
     adx_now = adx.iloc[-1]

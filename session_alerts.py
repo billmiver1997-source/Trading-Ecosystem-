@@ -78,7 +78,7 @@ def _next_photo(category, pool):
 
 def send_photo(photo_name, caption):
     if not SIGNALS_CHANNEL or not TELEGRAM_TOKEN:
-        return
+        return False
     path = os.path.join(IMAGES_DIR, photo_name)
     cap = caption[:1024]
     try:
@@ -110,10 +110,12 @@ def send_photo(photo_name, caption):
                 timeout=10,
             )
             r.raise_for_status()
-            return
+            return True
         r.raise_for_status()
+        return True
     except Exception as e:
         print(f"send_photo error: {e}")
+        return False
 
 
 def get_active_sessions(now_hour, now_min):
@@ -173,9 +175,9 @@ def main():
                         + overlap_note
                     )
                     photo = _next_photo(s["name"] + "_open", s["images_open"])
-                    send_photo(photo, msg)
-                    sent[open_key] = True
-                    print("Sent: " + s["name"] + " open alert")
+                    if send_photo(photo, msg):
+                        sent[open_key] = True
+                        print("Sent: " + s["name"] + " open alert")
 
                 # ── CLOSE alert (fires at session close time) ─────────────
                 close_key = s["name"] + "_close_" + today
@@ -190,9 +192,9 @@ def main():
                         "Volatility on " + s["name"] + " pairs may decrease."
                     )
                     photo = _next_photo(s["name"] + "_close", s["images_close"])
-                    send_photo(photo, msg)
-                    sent[close_key] = True
-                    print("Sent: " + s["name"] + " close alert")
+                    if send_photo(photo, msg):
+                        sent[close_key] = True
+                        print("Sent: " + s["name"] + " close alert")
 
         except Exception as e:
             print("Error: " + str(e))

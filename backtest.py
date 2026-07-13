@@ -61,7 +61,8 @@ def compute_adx(df, period=14):
     atr_w = _wilder_smooth(tr, period)
     plus_di = 100 * _wilder_smooth(plus_dm, period) / atr_w
     minus_di = 100 * _wilder_smooth(minus_dm, period) / atr_w
-    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di)
+    denom = (plus_di + minus_di).replace(0, float('nan'))
+    dx = (100 * (plus_di - minus_di).abs() / denom).fillna(0)
     return _wilder_smooth(dx, period)
 
 
@@ -244,6 +245,7 @@ def run_backtest():
                 print("Done: "+name)
         except Exception as e:
             print("Error "+name+": "+str(e))
+        time.sleep(1)  # avoid Yahoo Finance rate limiting on rapid sequential fetches
 
     if not results:
         send_all("⚠️ Backtest: No results")

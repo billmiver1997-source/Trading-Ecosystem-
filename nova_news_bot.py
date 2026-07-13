@@ -191,10 +191,10 @@ def _fetch_calendar_today():
         for row in rows[:8]:
             try:
                 tds = row.find_all("td")
-                if len(tds) < 3: continue
+                if len(tds) < 4: continue
                 ev_time = tds[0].text.strip()
                 currency = tds[1].text.strip()
-                ev_name = tds[3].text.strip() if len(tds)>3 else ""
+                ev_name = tds[3].text.strip()
                 if currency in ["USD","EUR","GBP","JPY","CHF","AUD","CAD","NZD"]:
                     events.append("📍 "+ev_time+" | "+currency+" | "+ev_name)
             except Exception as e:

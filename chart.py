@@ -206,6 +206,8 @@ def make_result_chart(name, symbol, signal, entry, sl, tp, entry_time, result_la
         return None
 
 
+_PAIR_RR = {"BTC/USD": 1.75, "SOL/USD": 1.75, "NZD/USD": 1.2}
+
 def make_equity_chart(journal_entries, rr=1.5):
     """Cumulative-R equity curve + drawdown from journal.json entries. Each entry's
     "result" (WIN/LOSS/BE) is converted to its R multiple rather than reusing the
@@ -216,7 +218,8 @@ def make_equity_chart(journal_entries, rr=1.5):
     cum, total = [], 0.0
     for e in journal_entries:
         result = e.get("result")
-        total += rr if result == "WIN" else (-1.0 if result == "LOSS" else 0.0)
+        entry_rr = _PAIR_RR.get(e.get("pair", ""), rr)  # use per-pair RR when known
+        total += entry_rr if result == "WIN" else (-1.0 if result == "LOSS" else 0.0)
         cum.append(total)
 
     # Start peak at 0 so a loss on the first trade shows a negative drawdown
@@ -276,7 +279,10 @@ def _load_font(size):
             return ImageFont.truetype(path, size)
         except OSError:
             continue
-    return ImageFont.load_default()
+    try:
+        return ImageFont.load_default(size)  # Pillow >= 10.1.0
+    except TypeError:
+        return ImageFont.load_default()
 
 
 def make_weekly_collage(entries, rr=1.5):
@@ -290,7 +296,11 @@ def make_weekly_collage(entries, rr=1.5):
         entry_time = e.get("entry_time")
         if not symbol or entry_time is None:
             continue
-        p = make_result_chart(e["pair"], symbol, e["side"], e["entry"], e["sl"], e["tp"], entry_time, e["result"])
+        try:
+            p = make_result_chart(e["pair"], symbol, e["side"], e["entry"], e["sl"], e["tp"], entry_time, e["result"])
+        except KeyError as ke:
+            print(f"make_weekly_collage: skipping entry with missing field {ke}")
+            continue
         if p:
             thumbs.append((p, e))
     if not thumbs:

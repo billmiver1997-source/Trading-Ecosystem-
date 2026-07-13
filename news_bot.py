@@ -279,7 +279,7 @@ def create_report(items):
         return (message.content[0].text if message.content else None), top_links
     except Exception as e:
         print("AI error: "+str(e))
-        return None, []
+        return None, top_links
 
 def send_channel(msg, parse_mode=None):
     try:
@@ -336,6 +336,11 @@ def main():
                     items = all_items
                 if items:
                     report, top_links = create_report(items)
+                    if not report:
+                        # AI unavailable — mark slot as used and move on (retry loop is
+                        # outside the 10-minute window after the 600s sleep anyway)
+                        print(f"No AI report for {hour}:00 — marking slot used to prevent silent miss")
+                        sent_today[send_key] = True
                     if report:
                         header = random.choice(SCHEDULE[hour])
                         if top_links:

@@ -84,7 +84,8 @@ def compute_adx(df, period=14):
     atr_w = _wilder_smooth(tr, period)
     plus_di = 100 * _wilder_smooth(plus_dm, period) / atr_w
     minus_di = 100 * _wilder_smooth(minus_dm, period) / atr_w
-    dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di)
+    denom = (plus_di + minus_di).replace(0, float('nan'))
+    dx = (100 * (plus_di - minus_di).abs() / denom).fillna(0)
     return _wilder_smooth(dx, period)
 
 
@@ -204,8 +205,10 @@ def send_watchlist_alert(name, setup):
         )
         r.raise_for_status()
         print(f"Watchlist alert sent: {name} {setup['bias']}")
+        return True
     except Exception as e:
         print(f"send_watchlist_alert error {name}: {e}")
+        return False
 
 
 def main():
@@ -214,7 +217,7 @@ def main():
     while True:
         try:
             open_trades = _load_json(OPEN_TRADES_FILE, [])
-            open_pairs = set(t["name"] for t in open_trades)
+            open_pairs = set(t["name"] for t in open_trades if "name" in t)
 
             # Fetched once per cycle (not per pair) and only consumed by metals,
             # which have dxy_filter=True in PAIR_PARAMS.
@@ -240,8 +243,8 @@ def main():
                     setup = find_developing_setup(df, name, dxy_bull, dxy_bear)
                     was_near = state.get(name, {}).get("near", False)
                     if setup and not was_near:
-                        send_watchlist_alert(name, setup)
-                        state[name] = {"near": True}
+                        if send_watchlist_alert(name, setup):
+                            state[name] = {"near": True}
                     elif not setup and was_near:
                         # Moved out of the zone — allow a fresh alert on the next approach
                         state[name] = {"near": False}
