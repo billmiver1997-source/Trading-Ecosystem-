@@ -35,6 +35,7 @@ _analysis_cache_lock = Lock()
 _ANALYSIS_TTL = 900   # 15 minutes
 _qa_last_time = {}    # chat_id -> last Q&A timestamp (per-user rate limiting)
 _qa_cooldown = 30     # seconds between free-form Q&A calls per user
+_AI_MODEL = "claude-haiku-4-5-20251001"
 
 def _get_anthropic():
     global _anthropic_client
@@ -162,6 +163,7 @@ def _update_personal_journal(chat_id_str, mutate_fn):
             os.replace(tmp, PERSONAL_JOURNAL_FILE)
         except Exception as e:
             print(f"update_personal_journal error: {e}")
+            raise
         finally:
             fcntl.flock(_lf, fcntl.LOCK_UN)
 
@@ -291,6 +293,8 @@ def _fetch_analysis(pair_name):
         atr_pct = round((atr / price) * 100, 3)
 
         client = _get_anthropic()
+        if not client:
+            return "AI analysis not available (API key not configured)."
         system_prompt = "You are a professional forex and commodities analyst. Respond in plain text only — no markdown, no asterisks. Always include a specific numeric ENTRY, SL, and TP. Use emojis sparingly."
         analysis_styles = [
             "Give a complete analysis of {pair} on the 15-minute timeframe. Cover: market bias, key levels, momentum, and a clear trade idea (BUY/SELL/WAIT) with entry, SL, and TP. Be direct and specific.",
@@ -310,7 +314,7 @@ def _fetch_analysis(pair_name):
         )
         prompt = style + data_context
         message = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model=_AI_MODEL,
             max_tokens=1000,
             system=system_prompt,
             messages=[{"role":"user","content":prompt}]
@@ -506,7 +510,12 @@ def handle_message(chat_id, text, username, first_name=""):
             keywords = ["war","attack","fed","rate","inflation","trump","tariff","oil","gold","dollar","ukraine","iran","china","russia","market","crash","rally","ceasefire","ecb","boe","sanctions"]
             headlines = []
             for feed_url in ["https://www.forexlive.com/feed/news","https://feeds.bbci.co.uk/news/world/rss.xml"]:
-                feed = feedparser.parse(feed_url)
+                try:
+                    _resp = requests.get(feed_url, timeout=10)
+                    feed = feedparser.parse(_resp.text)
+                except Exception as _feed_err:
+                    print(f"feed fetch error {feed_url}: {_feed_err}")
+                    continue
                 for entry in feed.entries[:15]:
                     title = entry.get("title","")
                     if any(k in title.lower() for k in keywords) and title not in headlines:
@@ -532,7 +541,7 @@ def handle_message(chat_id, text, username, first_name=""):
             style = random.choice(news_styles)
             headers = ["📰 LATEST NEWS", "📡 MARKET INTELLIGENCE", "🗞 BREAKING MARKET NEWS", "📊 MARKET UPDATE"]
             message = client.messages.create(
-                model="claude-haiku-4-5-20251001",
+                model=_AI_MODEL,
                 max_tokens=1000,
                 system=style,
                 messages=[{"role":"user","content":"Headlines:\n\n"+news_text}]
@@ -1017,6 +1026,8 @@ def handle_message(chat_id, text, username, first_name=""):
                     _tmp = ib_file + '.tmp'
                     with open(_tmp, 'w') as f:
                         json.dump(clients, f)
+                        f.flush()
+                        os.fsync(f.fileno())
                     os.replace(_tmp, ib_file)
                 finally:
                     fcntl.flock(_lf, fcntl.LOCK_UN)
@@ -1146,8 +1157,11 @@ def handle_message(chat_id, text, username, first_name=""):
             send_typing(chat_id)
             try:
                 client = _get_anthropic()
+                if not client:
+                    send_message(chat_id, "AI assistant is currently unavailable.", main_menu())
+                    return
                 message = client.messages.create(
-                    model="claude-haiku-4-5-20251001",
+                    model=_AI_MODEL,
                     max_tokens=300,
                     system=(
                         "You are the Trading Nova assistant, answering a free-form question in a "
