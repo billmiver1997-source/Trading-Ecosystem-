@@ -519,6 +519,9 @@ def handle_message(chat_id, text, username, first_name=""):
                 send_message(chat_id, "🌍 No major market headlines right now.\n\n📰 Full coverage: @tradingNovaNews", main_menu())
                 return
             client = _get_anthropic()
+            if not client:
+                send_message(chat_id, "🌍 Latest news at @tradingNovaNews", main_menu())
+                return
             news_text = "\n".join(headlines[:8])
             news_styles = [
                 "You are a financial news editor for traders. Plain text, no markdown. From these headlines, pick the 5 most market-relevant stories. Write each as one punchy line with an emoji. End with one sentence on the key theme tying them together.",

@@ -125,7 +125,7 @@ def main():
                 if is_high and not was_alerting:
                     if send_alert(name, data):
                         state[name] = {"alerting": True}
-                    state_changed = True
+                        state_changed = True
                 elif not is_high and was_alerting:
                     # Dropped back under threshold — allow a fresh alert if it spikes again
                     state[name] = {"alerting": False}
