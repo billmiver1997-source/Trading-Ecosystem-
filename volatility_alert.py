@@ -111,31 +111,32 @@ def send_alert(name, data):
 def main():
     print("Volatility alert service started...")
     state = _load_state()
-    while True:
-        try:
-            with ThreadPoolExecutor(max_workers=8) as ex:
+    # Create the executor once and reuse it across cycles to avoid thread spawn/join overhead
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        while True:
+            try:
                 results = dict(ex.map(fetch_volatility, PAIRS.items()))
 
-            state_changed = False
-            for name, data in results.items():
-                if not data:
-                    continue
-                was_alerting = state.get(name, {}).get("alerting", False)
-                is_high = data["pct"] > HIGH_THRESHOLD
-                if is_high and not was_alerting:
-                    if send_alert(name, data):
-                        state[name] = {"alerting": True}
+                state_changed = False
+                for name, data in results.items():
+                    if not data:
+                        continue
+                    was_alerting = state.get(name, {}).get("alerting", False)
+                    is_high = data["pct"] > HIGH_THRESHOLD
+                    if is_high and not was_alerting:
+                        if send_alert(name, data):
+                            state[name] = {"alerting": True}
+                            state_changed = True
+                    elif not is_high and was_alerting:
+                        # Dropped back under threshold — allow a fresh alert if it spikes again
+                        state[name] = {"alerting": False}
                         state_changed = True
-                elif not is_high and was_alerting:
-                    # Dropped back under threshold — allow a fresh alert if it spikes again
-                    state[name] = {"alerting": False}
-                    state_changed = True
-            if state_changed:
-                _save_state(state)
-        except Exception as e:
-            print(f"Main error: {e}")
+                if state_changed:
+                    _save_state(state)
+            except Exception as e:
+                print(f"Main error: {e}")
 
-        time.sleep(SCAN_INTERVAL)
+            time.sleep(SCAN_INTERVAL)
 
 
 if __name__ == "__main__":

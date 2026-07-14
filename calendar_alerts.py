@@ -134,8 +134,9 @@ def main():
             for event in events:
                 try:
                     event_dt = tz.localize(datetime.strptime(today + " " + event["time"], "%Y-%m-%d %H:%M"))
-                except Exception:
+                except Exception as e:
                     # ValueError for bad format; pytz AmbiguousTimeError/NonExistentTimeError at DST transitions
+                    print(f"calendar_alerts: time parse error for '{event.get('time')}': {e}")
                     continue
                 minutes_until = (event_dt - now).total_seconds() / 60
                 key = event["currency"] + "_" + event["title"] + "_" + event["time"]

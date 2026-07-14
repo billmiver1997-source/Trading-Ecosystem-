@@ -120,8 +120,8 @@ def _save_json(path, data):
         print(f"save {path} error: {e}")
         try:
             os.unlink(tmp)
-        except OSError:
-            pass
+        except OSError as e:
+            print(f"_save_json: failed to delete temp {tmp}: {e}")
         return False
 
 
@@ -218,9 +218,8 @@ def send_channel_text(msg):
 def get_data(symbol):
     try:
         ticker = yf.Ticker(symbol)
-        df = ticker.history(period="30d", interval="1h")
-        if len(df) < 210:
-            df = ticker.history(period="60d", interval="1h")
+        # Fetch 60d directly — avoids a wasted 30d call on pairs that routinely need it
+        df = ticker.history(period="60d", interval="1h")
         if len(df) < 210:
             return None
         return df

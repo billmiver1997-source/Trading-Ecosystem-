@@ -7,7 +7,7 @@ entry/SL/TP levels drawn on top.
 """
 import os
 import warnings
-warnings.filterwarnings("ignore")
+warnings.filterwarnings("ignore", category=UserWarning, module="mplfinance")
 from datetime import datetime, timezone
 import matplotlib
 matplotlib.use("Agg")
