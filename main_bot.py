@@ -214,6 +214,7 @@ def get_education(topic):
         message = client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=500,
+            timeout=25,  # SDK default is 600s — a user pressing a button shouldn't wait that long
             messages=[{"role": "user", "content": prompt_text}]
         )
         return message.content[0].text

@@ -122,6 +122,7 @@ def get_analysis(events):
         message = _anthropic_client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=500,
+            timeout=25,  # SDK default is 600s — too long to sit on for a scheduled job
             system="You are a forex analyst. Write in simple English only. No markdown.",
             messages=[{"role":"user","content":"Look at these economic events for today and write 3-4 simple sentences about what traders should watch. Which pairs will move most?\n\nEvents:\n"+events_text}]
         )

@@ -330,6 +330,7 @@ def _fetch_analysis(pair_name):
         message = client.messages.create(
             model=_AI_MODEL,
             max_tokens=1000,
+            timeout=25,  # SDK default is 600s — a user pressing Analysis shouldn't wait that long
             system=system_prompt,
             messages=[{"role":"user","content":prompt}]
         )
@@ -559,6 +560,7 @@ def handle_message(chat_id, text, username, first_name=""):
             message = client.messages.create(
                 model=_AI_MODEL,
                 max_tokens=1000,
+                timeout=25,  # SDK default is 600s — a user pressing a button shouldn't wait that long
                 system=style,
                 messages=[{"role":"user","content":"Headlines:\n\n"+news_text}]
             )
@@ -1188,6 +1190,7 @@ def handle_message(chat_id, text, username, first_name=""):
                 message = client.messages.create(
                     model=_AI_MODEL,
                     max_tokens=300,
+                    timeout=25,  # SDK default is 600s — a user waiting on a Q&A reply shouldn't wait that long
                     system=(
                         "You are the Trading Nova assistant, answering a free-form question in a "
                         "trading Telegram bot. Be direct and concise (under 120 words). Respond in "

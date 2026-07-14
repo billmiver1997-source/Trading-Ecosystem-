@@ -160,6 +160,7 @@ def get_ai_summary(headlines, category):
         message = _anthropic_client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=450,
+            timeout=25,  # SDK default is 600s — too long for a user waiting on a button press
             system=system_prompt,
             messages=[{"role":"user","content":"Headlines:\n"+"\n".join(headlines)}]
         )
@@ -355,6 +356,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 message = _anthropic_client.messages.create(
                     model="claude-haiku-4-5-20251001",
                     max_tokens=350,
+                    timeout=25,  # SDK default is 600s — too long for a user waiting on a button press
                     system=system,
                     messages=[{"role":"user","content":"Headlines:\n\n"+"\n".join(all_h[:8])}]
                 )

@@ -129,6 +129,7 @@ def ai(prompt):
         r = _anthropic_client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=300,
+            timeout=25,  # SDK default is 600s — too long to sit on for a scheduled job
             messages=[{"role":"user","content":prompt}]
         )
         return r.content[0].text if r.content else ""

@@ -180,6 +180,7 @@ def format_message(fg, dxy, gold, vix):
         message = _anthropic_client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=350,
+            timeout=25,  # SDK default is 600s — too long to sit on for a scheduled job
             system=style,
             messages=[{"role":"user","content":"Sentiment data:\n"+data}]
         )

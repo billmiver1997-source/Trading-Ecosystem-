@@ -119,6 +119,7 @@ def get_analysis(earnings):
         message = _anthropic_client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=400,
+            timeout=25,  # SDK default is 600s — too long to sit on for a scheduled job
             system="You are a financial analyst briefing traders. Write in plain English only, no markdown.",
             messages=[{"role":"user","content":"These major companies report earnings today. Write 2-3 simple sentences about what traders should watch and how it might affect markets, USD and risk sentiment.\n\n"+earnings_text}]
         )

@@ -304,6 +304,7 @@ def create_report(items):
         message = _anthropic_client.messages.create(
             model="claude-haiku-4-5-20251001",
             max_tokens=380,
+            timeout=25,  # SDK default is 600s — too long to sit on for a scheduled job
             system=style["system"],
             messages=[{"role":"user","content":style["user"].format(headlines="\n".join(titles[:10]))}]
         )
