@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv("/root/tradingbot/.env")
 
+import json
 import requests
 import time
 import anthropic
@@ -19,6 +20,28 @@ _anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_
 CHANNEL_ID = os.getenv("TELEGRAM_NEWS_CHANNEL")
 if not CHANNEL_ID:
     raise RuntimeError("TELEGRAM_NEWS_CHANNEL is not set in environment")
+
+SENT_STATE_FILE = "/root/tradingbot/sent_state_calendar.json"
+
+def _load_sent_day():
+    """Persisted (not just in-memory) so a restart inside the 08:00-08:09 send
+    window — e.g. monitor.sh catching a crash — can't cause a duplicate send."""
+    if os.path.exists(SENT_STATE_FILE):
+        try:
+            with open(SENT_STATE_FILE) as f:
+                return json.load(f).get("day", "")
+        except (json.JSONDecodeError, ValueError, OSError) as e:
+            print(f"load sent state error: {e}")
+    return ""
+
+def _save_sent_day(day):
+    tmp = SENT_STATE_FILE + ".tmp"
+    try:
+        with open(tmp, "w") as f:
+            json.dump({"day": day}, f)
+        os.replace(tmp, SENT_STATE_FILE)
+    except Exception as e:
+        print(f"save sent state error: {e}")
 
 def send_channel(msg):
     try:
@@ -127,7 +150,7 @@ def format_message(events, analysis):
 
 def main():
     print("Economic Calendar bot started...")
-    sent_today = ""
+    sent_today = _load_sent_day()
     while True:
         try:
             tz = pytz.timezone("Europe/Athens")
@@ -136,17 +159,20 @@ def main():
             hour = now.hour
             minute = now.minute
 
-            if hour == 8 and minute < 10 and sent_today != today:
+            # 08:20, not 08:00 — staggered so this doesn't land in the same burst as
+            # news_bot's 08:00 morning brief and sentiment_bot's 08:40 read.
+            if hour == 8 and 20 <= minute < 30 and sent_today != today:
                 print("Sending calendar...")
                 events = get_calendar()
                 analysis = get_analysis(events)
                 msg = format_message(events, analysis)
                 if send_channel(msg):
                     sent_today = today
+                    _save_sent_day(today)
                     print("Calendar sent! "+str(len(events))+" events")
                     time.sleep(600)
                 else:
-                    # send failed — sleep to avoid spinning hot in the 8:00-8:09 window
+                    # send failed — sleep to avoid spinning hot in the 8:20-8:29 window
                     time.sleep(60)
             else:
                 time.sleep(300)

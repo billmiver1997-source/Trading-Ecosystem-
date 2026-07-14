@@ -15,6 +15,27 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
 if not TELEGRAM_TOKEN:
     raise RuntimeError("TELEGRAM_TOKEN_SIGNAL is not set in environment")
 USERS_FILE = "/root/tradingbot/users.json"
+SENT_STATE_FILE = "/root/tradingbot/sent_state_earnings.json"
+
+def _load_sent_day():
+    """Persisted (not just in-memory) so a restart inside the 07:00-07:09 send
+    window — e.g. monitor.sh catching a crash — can't cause a duplicate DM blast."""
+    if os.path.exists(SENT_STATE_FILE):
+        try:
+            with open(SENT_STATE_FILE) as f:
+                return json.load(f).get("day", "")
+        except (json.JSONDecodeError, ValueError, OSError) as e:
+            print(f"load sent state error: {e}")
+    return ""
+
+def _save_sent_day(day):
+    tmp = SENT_STATE_FILE + ".tmp"
+    try:
+        with open(tmp, "w") as f:
+            json.dump({"day": day}, f)
+        os.replace(tmp, SENT_STATE_FILE)
+    except Exception as e:
+        print(f"save sent state error: {e}")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 if not ANTHROPIC_API_KEY:
     print("Warning: ANTHROPIC_API_KEY not set — AI earnings summaries will be unavailable")
@@ -128,7 +149,7 @@ def format_message(earnings, analysis):
 
 def main():
     print("Earnings bot started...")
-    sent_today = ""
+    sent_today = _load_sent_day()
     while True:
         try:
             tz = pytz.timezone("Europe/Athens")
@@ -145,6 +166,7 @@ def main():
                 users = load_users()
                 if send_all(msg) > 0 or not users:
                     sent_today = today
+                    _save_sent_day(today)
                     print("Earnings sent! "+str(len(earnings))+" companies")
                     time.sleep(600)
                 else:

@@ -7,6 +7,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv("/root/tradingbot/.env")
 
+import json
 import time
 import requests
 import pandas as pd
@@ -18,6 +19,28 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
 CHANNEL_ID = os.getenv("TELEGRAM_NEWS_CHANNEL")
 if not TELEGRAM_TOKEN or not CHANNEL_ID:
     raise RuntimeError("TELEGRAM_TOKEN_SIGNAL and TELEGRAM_NEWS_CHANNEL must be set in .env")
+
+SENT_STATE_FILE = "/root/tradingbot/sent_state_regime.json"
+
+def _load_sent_day():
+    """Persisted (not just in-memory) so a restart inside the send window — e.g.
+    monitor.sh catching a crash — can't cause a duplicate send."""
+    if os.path.exists(SENT_STATE_FILE):
+        try:
+            with open(SENT_STATE_FILE) as f:
+                return json.load(f).get("day", "")
+        except (json.JSONDecodeError, ValueError, OSError) as e:
+            print(f"load sent state error: {e}")
+    return ""
+
+def _save_sent_day(day):
+    tmp = SENT_STATE_FILE + ".tmp"
+    try:
+        with open(tmp, "w") as f:
+            json.dump({"day": day}, f)
+        os.replace(tmp, SENT_STATE_FILE)
+    except Exception as e:
+        print(f"save sent state error: {e}")
 
 SEND_HOUR = 9  # Athens time, distinct from correlation_bot's 09:00 slot — see main()
 
@@ -128,24 +151,29 @@ def send_channel(msg):
         )
         r.raise_for_status()
         print("Market regime report sent!")
+        return True
     except Exception as e:
         print(f"send_channel error: {e}")
+        return False
 
 
 def main():
     print("Market regime bot started...")
-    sent_today = ""
+    sent_today = _load_sent_day()
     while True:
         try:
             tz = pytz.timezone("Europe/Athens")
             now = datetime.now(tz)
             today = now.strftime("%Y-%m-%d")
             if now.hour == SEND_HOUR and now.minute >= 30 and now.minute < 40 and sent_today != today:
-                sent_today = today
                 print("Building market regime report...")
                 report = build_report()
-                if report:
-                    send_channel(report)
+                if report and send_channel(report):
+                    # Only mark sent (in memory + on disk) on confirmed delivery, so a
+                    # missing report or a failed send is retried on the next 5-min tick
+                    # instead of being silently skipped for the rest of the day.
+                    sent_today = today
+                    _save_sent_day(today)
         except Exception as e:
             print(f"Main error: {e}")
         time.sleep(300)

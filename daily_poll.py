@@ -23,21 +23,43 @@ SEND_HOUR = 10  # Athens time
 PAIRS = ["EUR/USD", "GBP/USD", "XAU/USD", "BTC/USD", "Oil/USD", "USD/JPY", "AUD/USD", "USD/CAD"]
 
 
-def _load_cursor():
+def _load_cursor_state():
     if os.path.exists(CURSOR_FILE):
         try:
             with open(CURSOR_FILE) as f:
-                return json.load(f).get("idx", 0)
+                return json.load(f)
         except (json.JSONDecodeError, ValueError, OSError) as e:
             print(f"load cursor error: {e}")
-    return 0
+    return {}
+
+
+def _load_cursor():
+    return _load_cursor_state().get("idx", 0)
+
+
+def _load_sent_day():
+    """Persisted (not just in-memory) so a restart inside the 10:00-10:09 send
+    window — e.g. monitor.sh catching a crash — can't cause a duplicate send."""
+    return _load_cursor_state().get("sent_day", "")
 
 
 def _save_cursor(idx):
+    state = _load_cursor_state()
+    state["idx"] = idx
+    _save_cursor_state(state)
+
+
+def _save_sent_day(day):
+    state = _load_cursor_state()
+    state["sent_day"] = day
+    _save_cursor_state(state)
+
+
+def _save_cursor_state(state):
     tmp = CURSOR_FILE + ".tmp"
     try:
         with open(tmp, "w") as f:
-            json.dump({"idx": idx}, f)
+            json.dump(state, f)
         os.replace(tmp, CURSOR_FILE)
     except Exception as e:
         print(f"save cursor error: {e}")
@@ -76,7 +98,7 @@ def run_once():
 
 def main():
     print("Daily poll bot started...")
-    sent_today = ""
+    sent_today = _load_sent_day()
     while True:
         try:
             tz = pytz.timezone("Europe/Athens")
@@ -87,6 +109,7 @@ def main():
                 # Only mark sent if poll was actually delivered; silent failures retry next tick
                 if run_once():
                     sent_today = today
+                    _save_sent_day(today)
         except Exception as e:
             print(f"Main error: {e}")
         time.sleep(300)

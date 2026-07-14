@@ -25,6 +25,27 @@ if not SIGNALS_CHANNEL:
 USERS_FILE = "/root/tradingbot/users.json"
 TRADES_FILE = "/root/tradingbot/open_trades.json"
 STATS_FILE = "/root/tradingbot/trade_stats.json"
+SENT_STATE_FILE = "/root/tradingbot/sent_state_perftracker.json"
+
+def _load_sent_day():
+    """Persisted (not just in-memory) so a restart inside the 23:50-23:59 send
+    window — e.g. monitor.sh catching a crash — can't cause a duplicate daily report."""
+    if os.path.exists(SENT_STATE_FILE):
+        try:
+            with open(SENT_STATE_FILE) as f:
+                return json.load(f).get("day", "")
+        except (json.JSONDecodeError, ValueError, OSError) as e:
+            print(f"load sent state error: {e}")
+    return ""
+
+def _save_sent_day(day):
+    tmp = SENT_STATE_FILE + ".tmp"
+    try:
+        with open(tmp, "w") as f:
+            json.dump({"day": day}, f)
+        os.replace(tmp, SENT_STATE_FILE)
+    except Exception as e:
+        print(f"save sent state error: {e}")
 
 SYMBOLS = {
     "USD/CAD": "USDCAD=X",
@@ -408,7 +429,7 @@ def send_daily_stats():
 
 def main():
     print("Performance tracker started...")
-    last_stats_day = ""
+    last_stats_day = _load_sent_day()
     while True:
         try:
             check_trades()
@@ -418,6 +439,7 @@ def main():
             if now.hour == 23 and now.minute >= 50 and last_stats_day != today:
                 send_daily_stats()
                 last_stats_day = today
+                _save_sent_day(today)
         except Exception as e:
             print("Error: "+str(e))
         time.sleep(60)

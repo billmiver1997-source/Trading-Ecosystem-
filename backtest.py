@@ -22,6 +22,27 @@ if not TELEGRAM_TOKEN:
 SIGNALS_CHANNEL = os.getenv("SIGNALS_CHANNEL")
 USERS_FILE = "/root/tradingbot/users.json"
 JOURNAL_FILE = "/root/tradingbot/journal.json"
+SENT_STATE_FILE = "/root/tradingbot/sent_state_backtest.json"
+
+def _load_sent_week():
+    """Persisted (not just in-memory) so a restart inside the Sun 20:00-20:09 send
+    window — e.g. monitor.sh catching a crash — can't cause a duplicate weekly report."""
+    if os.path.exists(SENT_STATE_FILE):
+        try:
+            with open(SENT_STATE_FILE) as f:
+                return json.load(f).get("week", "")
+        except (json.JSONDecodeError, ValueError, OSError) as e:
+            print(f"load sent state error: {e}")
+    return ""
+
+def _save_sent_week(week):
+    tmp = SENT_STATE_FILE + ".tmp"
+    try:
+        with open(tmp, "w") as f:
+            json.dump({"week": week}, f)
+        os.replace(tmp, SENT_STATE_FILE)
+    except Exception as e:
+        print(f"save sent state error: {e}")
 
 # Same pairs as signal_strategy.ALL_PAIRS — kept in sync deliberately, this weekly report
 # is an ongoing out-of-sample check on the exact strategy that's live, not a separate one.
@@ -298,16 +319,17 @@ def run_backtest():
 
 def main():
     print("Backtest bot started (pullback strategy, USD/CAD + Oil/USD + NZD/USD + BTC/USD + SOL/USD)...")
-    sent_this_week = ""
+    sent_this_week = _load_sent_week()
     while True:
         try:
             tz = pytz.timezone("Europe/Athens")
             now = datetime.now(tz)
             week = now.strftime("%Y-%W")
             if now.weekday() == 6 and now.hour == 20 and now.minute < 10 and sent_this_week != week:
-                # Mark done BEFORE running so a partial failure inside run_backtest()
-                # doesn't cause a second run (and duplicate send) on the next loop tick.
+                # Mark done BEFORE running (in memory + on disk) so a partial failure
+                # inside run_backtest(), or a restart mid-window, can't cause a duplicate send.
                 sent_this_week = week
+                _save_sent_week(week)
                 print("Running backtest...")
                 run_backtest()
         except Exception as e:

@@ -26,6 +26,27 @@ if not TELEGRAM_TOKEN or not SIGNALS_CHANNEL:
 
 JOURNAL_FILE = "/root/tradingbot/journal.json"
 SEND_HOUR = 21  # Athens Sunday, after the 20:00 backtest report
+SENT_STATE_FILE = "/root/tradingbot/sent_state_digest.json"
+
+def _load_sent_week():
+    """Persisted (not just in-memory) so a restart inside the Sun 21:00-21:09 send
+    window — e.g. monitor.sh catching a crash — can't cause a duplicate digest post."""
+    if os.path.exists(SENT_STATE_FILE):
+        try:
+            with open(SENT_STATE_FILE) as f:
+                return json.load(f).get("week", "")
+        except (json.JSONDecodeError, ValueError, OSError) as e:
+            print(f"load sent state error: {e}")
+    return ""
+
+def _save_sent_week(week):
+    tmp = SENT_STATE_FILE + ".tmp"
+    try:
+        with open(tmp, "w") as f:
+            json.dump({"week": week}, f)
+        os.replace(tmp, SENT_STATE_FILE)
+    except Exception as e:
+        print(f"save sent state error: {e}")
 
 
 def send_channel_photo(photo_path, caption=""):
@@ -72,7 +93,7 @@ def run_once():
 
 def main():
     print("Weekly digest bot started...")
-    sent_this_week = ""
+    sent_this_week = _load_sent_week()
     while True:
         try:
             tz = pytz.timezone("Europe/Athens")
@@ -80,6 +101,7 @@ def main():
             week = now.strftime("%Y-%W")
             if now.weekday() == 6 and now.hour == SEND_HOUR and now.minute < 10 and sent_this_week != week:
                 sent_this_week = week
+                _save_sent_week(week)
                 print("Running weekly digest...")
                 run_once()
         except Exception as e:

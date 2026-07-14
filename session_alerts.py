@@ -17,6 +17,29 @@ CURSORS_FILE = "/root/tradingbot/cursors_sessions.json"
 _photo_ids = {}
 _img_cursors = {}
 
+SENT_STATE_FILE = "/root/tradingbot/session_alerts_sent.json"
+
+def _load_sent_state():
+    """Persisted (not just in-memory) so a restart inside one of the 5-minute
+    open/close windows — e.g. monitor.sh catching a crash — can't cause a
+    duplicate session alert."""
+    if os.path.exists(SENT_STATE_FILE):
+        try:
+            with open(SENT_STATE_FILE) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, ValueError, OSError) as e:
+            print(f"load sent state error: {e}")
+    return {}
+
+def _save_sent_state(sent):
+    tmp = SENT_STATE_FILE + ".tmp"
+    try:
+        with open(tmp, "w") as f:
+            json.dump(sent, f)
+        os.replace(tmp, SENT_STATE_FILE)
+    except Exception as e:
+        print(f"save sent state error: {e}")
+
 SESSIONS = [
     {
         "name": "Tokyo",
@@ -132,7 +155,7 @@ def main():
     print("Session alerts started...")
     _load_cursors()
     tz = pytz.timezone("Europe/Athens")
-    sent = {}
+    sent = _load_sent_state()
 
     while True:
         try:
@@ -177,6 +200,7 @@ def main():
                     photo = _next_photo(s["name"] + "_open", s["images_open"])
                     if send_photo(photo, msg):
                         sent[open_key] = True
+                        _save_sent_state(sent)
                         print("Sent: " + s["name"] + " open alert")
 
                 # ── CLOSE alert (fires at session close time) ─────────────
@@ -194,6 +218,7 @@ def main():
                     photo = _next_photo(s["name"] + "_close", s["images_close"])
                     if send_photo(photo, msg):
                         sent[close_key] = True
+                        _save_sent_state(sent)
                         print("Sent: " + s["name"] + " close alert")
 
         except Exception as e:

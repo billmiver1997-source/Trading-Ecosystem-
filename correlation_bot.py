@@ -6,6 +6,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv("/root/tradingbot/.env")
 
+import json
 import time
 import requests
 import numpy as np
@@ -22,6 +23,28 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
 CHANNEL_ID = os.getenv("TELEGRAM_NEWS_CHANNEL")
 if not TELEGRAM_TOKEN or not CHANNEL_ID:
     raise RuntimeError("TELEGRAM_TOKEN_SIGNAL and TELEGRAM_NEWS_CHANNEL must be set in .env")
+
+SENT_STATE_FILE = "/root/tradingbot/sent_state_correlation.json"
+
+def _load_sent_day():
+    """Persisted (not just in-memory) so a restart inside the send window — e.g.
+    monitor.sh catching a crash — can't cause a duplicate send."""
+    if os.path.exists(SENT_STATE_FILE):
+        try:
+            with open(SENT_STATE_FILE) as f:
+                return json.load(f).get("day", "")
+        except (json.JSONDecodeError, ValueError, OSError) as e:
+            print(f"load sent state error: {e}")
+    return ""
+
+def _save_sent_day(day):
+    tmp = SENT_STATE_FILE + ".tmp"
+    try:
+        with open(tmp, "w") as f:
+            json.dump({"day": day}, f)
+        os.replace(tmp, SENT_STATE_FILE)
+    except Exception as e:
+        print(f"save sent state error: {e}")
 
 CHARTS_DIR = os.getenv("CHARTS_DIR", "/root/tradingbot/charts")
 
@@ -148,14 +171,17 @@ def run_once():
 
 def main():
     print("Correlation bot started...")
-    sent_today = ""
+    sent_today = _load_sent_day()
     while True:
         try:
             tz = pytz.timezone("Europe/Athens")
             now = datetime.now(tz)
             today = now.strftime("%Y-%m-%d")
             if now.hour == SEND_HOUR and now.minute < 10 and sent_today != today:
-                sent_today = today  # mark before running to avoid duplicate on partial failure
+                # Marked before running (partial-failure guard) AND persisted to disk
+                # so a restart inside this window can't re-trigger a duplicate send.
+                sent_today = today
+                _save_sent_day(today)
                 print("Running daily correlation heatmap...")
                 run_once()
         except Exception as e:

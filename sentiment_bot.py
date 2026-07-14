@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv("/root/tradingbot/.env")
 
+import json
 import random
 import requests
 import time
@@ -20,6 +21,28 @@ _anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY) if ANTHROPIC_
 CHANNEL_ID = os.getenv("TELEGRAM_NEWS_CHANNEL")
 if not CHANNEL_ID:
     raise RuntimeError("TELEGRAM_NEWS_CHANNEL is not set in environment")
+
+SENT_STATE_FILE = "/root/tradingbot/sent_state_sentiment.json"
+
+def _load_sent_day():
+    """Persisted (not just in-memory) so a restart inside the send window — e.g.
+    monitor.sh catching a crash — can't cause a duplicate send."""
+    if os.path.exists(SENT_STATE_FILE):
+        try:
+            with open(SENT_STATE_FILE) as f:
+                return json.load(f).get("day", "")
+        except (json.JSONDecodeError, ValueError, OSError) as e:
+            print(f"load sent state error: {e}")
+    return ""
+
+def _save_sent_day(day):
+    tmp = SENT_STATE_FILE + ".tmp"
+    try:
+        with open(tmp, "w") as f:
+            json.dump({"day": day}, f)
+        os.replace(tmp, SENT_STATE_FILE)
+    except Exception as e:
+        print(f"save sent state error: {e}")
 IMAGES_DIR = "/root/tradingbot/images"
 _photo_ids = {}
 
@@ -170,7 +193,7 @@ def format_message(fg, dxy, gold, vix):
 
 def main():
     print("Sentiment bot started...")
-    sent_today = ""
+    sent_today = _load_sent_day()
     while True:
         try:
             tz = pytz.timezone("Europe/Athens")
@@ -179,7 +202,9 @@ def main():
             hour = now.hour
             minute = now.minute
 
-            if hour == 8 and minute < 10 and sent_today != today:
+            # 08:40, not 08:00 — staggered so this doesn't land in the same burst as
+            # news_bot's 08:00 morning brief and calendar_bot's 08:20 calendar.
+            if hour == 8 and 40 <= minute < 50 and sent_today != today:
                 print("Sending sentiment report...")
                 fg = get_fear_greed()
                 dxy = get_dxy_sentiment()
@@ -188,6 +213,7 @@ def main():
                 msg = format_message(fg, dxy, gold, vix)
                 if msg and send_channel(msg):
                     sent_today = today
+                    _save_sent_day(today)
                     print("Sentiment sent!")
                 elif not msg:
                     print("Sentiment skipped — no data available")

@@ -232,6 +232,29 @@ def _save_seen(seen):
     except Exception as e:
         print(f"save seen error: {e}")
 
+SENT_SLOTS_FILE = "/root/tradingbot/news_sent_slots.json"
+
+def _load_sent_slots():
+    """Persisted (not just in-memory) so a restart inside one of the 6 daily
+    10-minute send windows — e.g. monitor.sh catching a crash — can't cause a
+    duplicate post for that slot."""
+    if os.path.exists(SENT_SLOTS_FILE):
+        try:
+            with open(SENT_SLOTS_FILE) as f:
+                return json.load(f)
+        except (json.JSONDecodeError, ValueError, OSError) as e:
+            print(f"load sent slots error: {e}")
+    return {}
+
+def _save_sent_slots(sent_today):
+    tmp = SENT_SLOTS_FILE + ".tmp"
+    try:
+        with open(tmp, "w") as f:
+            json.dump(sent_today, f)
+        os.replace(tmp, SENT_SLOTS_FILE)
+    except Exception as e:
+        print(f"save sent slots error: {e}")
+
 def _split_fresh(items, seen):
     cutoff = time.time() - SEEN_TTL_HOURS * 3600
     fresh = [it for it in items if seen.get(it[0], 0) < cutoff]
@@ -295,7 +318,7 @@ def send_channel(msg, parse_mode=None):
 def main():
     print("News bot started...")
     _load_cursors()
-    sent_today = {}
+    sent_today = _load_sent_slots()
 
     while True:
         try:
@@ -341,6 +364,7 @@ def main():
                         # outside the 10-minute window after the 600s sleep anyway)
                         print(f"No AI report for {hour}:00 — marking slot used to prevent silent miss")
                         sent_today[send_key] = True
+                        _save_sent_slots(sent_today)
                     if report:
                         header = random.choice(SCHEDULE[hour])
                         if top_links:
@@ -389,6 +413,7 @@ def main():
                         seen = {k: v for k, v in seen.items() if now_t - v < SEEN_TTL_HOURS * 3600 * 2}
                         _save_seen(seen)
                         sent_today[send_key] = True  # only mark sent when content was actually delivered
+                        _save_sent_slots(sent_today)
                 time.sleep(600)
                 continue
 
