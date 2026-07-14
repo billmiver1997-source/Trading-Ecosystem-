@@ -16,6 +16,7 @@ import pytz
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
+import threading
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN_SIGNAL")
 if not TELEGRAM_TOKEN:
@@ -273,6 +274,42 @@ def get_analysis(pair_name):
         with _analysis_cache_lock:
             _analysis_cache[pair_name] = (time.time(), result)
     return result
+
+def _is_analysis_cached(pair_name):
+    """Peek without triggering a fetch — used to decide whether a live request
+    needs the 'analyzing...' heads-up or will resolve from cache instantly."""
+    with _analysis_cache_lock:
+        cached = _analysis_cache.get(pair_name)
+        return bool(cached and time.time() - cached[0] < _ANALYSIS_TTL)
+
+def _get_analysis_with_typing(chat_id, pair_name):
+    """Wraps get_analysis() with a typing indicator that re-fires every 4s —
+    Telegram's own 'typing...' expires after ~5s, so a single send_typing()
+    before a 6-13s call left the chat looking idle for most of the wait."""
+    stop_flag = threading.Event()
+    def _keep_typing():
+        while not stop_flag.wait(4):
+            send_typing(chat_id)
+    t = threading.Thread(target=_keep_typing, daemon=True)
+    t.start()
+    try:
+        return get_analysis(pair_name)
+    finally:
+        stop_flag.set()
+
+def _prewarm_analysis_cache():
+    """Proactively refreshes the analysis cache for every known pair so a live
+    request almost always resolves from cache (near-instant) instead of
+    triggering a fresh ~6-13s data-fetch + AI call. get_analysis() already
+    skips the actual work when the cache is still fresh, so most ticks here
+    are cheap no-ops — real work happens roughly once per pair per TTL window."""
+    while True:
+        for pair_name in SYMBOLS:
+            try:
+                get_analysis(pair_name)
+            except Exception as e:
+                print(f"prewarm_analysis error ({pair_name}): {e}")
+        time.sleep(300)  # 5 min — well under the 15-min TTL, keeps the staleness window small
 
 def _fetch_analysis(pair_name):
     symbol = SYMBOLS.get(pair_name)
@@ -575,22 +612,25 @@ def handle_message(chat_id, text, username, first_name=""):
     elif text_lower.startswith("/analysis "):
         pair_input = text_lower[len("/analysis "):].strip()
         pair_name = ALIASES.get(pair_input) or next((k for k in SYMBOLS if k.lower() == pair_input), pair_input.upper())
-        send_typing(chat_id)
-        send_message(chat_id, get_analysis(pair_name), main_menu())
+        if not _is_analysis_cached(pair_name):
+            send_message(chat_id, "🔎 Analyzing " + pair_name + " — pulling live data, one moment...")
+        send_message(chat_id, _get_analysis_with_typing(chat_id, pair_name), main_menu())
 
     elif any(text_lower.replace(" ","").replace("/","") == k.replace(" ","").replace("/","") for k in ALIASES.keys()):
         normalized = text_lower.replace(" ","").replace("/","")
         # Find the original key whose normalized form matches, then look up the pair
         key = next(k for k in ALIASES.keys() if k.replace(" ","").replace("/","") == normalized)
         pair_name = ALIASES.get(key, normalized.upper())
-        send_typing(chat_id)
-        send_message(chat_id, get_analysis(pair_name), main_menu())
+        if not _is_analysis_cached(pair_name):
+            send_message(chat_id, "🔎 Analyzing " + pair_name + " — pulling live data, one moment...")
+        send_message(chat_id, _get_analysis_with_typing(chat_id, pair_name), main_menu())
 
     elif any(emoji in text for emoji in ["🇪🇺","🇬🇧","🪙","🟡","🔵","⛽","🇺🇸","🇦🇺","🥈","🟠","🇯🇵","🇳🇿","🇨🇦"]):
         for k, v in ALIASES.items():
             if k in text_lower or v.lower() in text_lower:
-                send_typing(chat_id)
-                send_message(chat_id, get_analysis(v), main_menu())
+                if not _is_analysis_cached(v):
+                    send_message(chat_id, "🔎 Analyzing " + v + " — pulling live data, one moment...")
+                send_message(chat_id, _get_analysis_with_typing(chat_id, v), main_menu())
                 return
         # Emoji detected but no matching pair found — show pair picker
         send_message(chat_id, "Choose a pair:", pairs_menu())
@@ -1266,6 +1306,7 @@ def _ensure_keyboard(chat_id):
 
 def main():
     set_commands()
+    threading.Thread(target=_prewarm_analysis_cache, daemon=True).start()
     offset = None
     print("Listener started...")
     while True:
