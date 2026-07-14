@@ -1,0 +1,27 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // empty' | { read -r f; [ -z \"$f\" ] && exit 0; echo \"$f\" | grep -q '\\.py$' && python3 -m py_compile \"$f\" 2>&1 && echo \"Syntax OK: $f\" || echo \"SYNTAX ERROR in $f\"; } 2>/dev/null || true",
+            "statusMessage": "Checking Python syntax..."
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd /Users/vasileiosvou/Documents/Projects/telegram-bot/trading_nova_project && git diff --stat HEAD 2>/dev/null | head -5",
+            "statusMessage": "Summarising changes..."
+          }
+        ]
+      }
+    ]
+  }
+}

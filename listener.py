@@ -32,9 +32,13 @@ _anthropic_client = None
 _anthropic_lock = Lock()
 _analysis_cache = {}  # pair_name -> (timestamp, result_text)
 _analysis_cache_lock = Lock()
+_analysis_in_flight = {}       # pair_name -> Lock(); one API call per pair at a time
+_analysis_in_flight_lock = Lock()
 _ANALYSIS_TTL = 900   # 15 minutes
 _qa_last_time = {}    # chat_id -> last Q&A timestamp (per-user rate limiting)
 _qa_cooldown = 30     # seconds between free-form Q&A calls per user
+_qa_lock = Lock()     # guards check-and-set of _qa_last_time under 20-worker executor
+_AI_MODEL = "claude-haiku-4-5-20251001"
 
 def _get_anthropic():
     global _anthropic_client
@@ -162,6 +166,7 @@ def _update_personal_journal(chat_id_str, mutate_fn):
             os.replace(tmp, PERSONAL_JOURNAL_FILE)
         except Exception as e:
             print(f"update_personal_journal error: {e}")
+            raise
         finally:
             fcntl.flock(_lf, fcntl.LOCK_UN)
 
@@ -252,10 +257,21 @@ def get_analysis(pair_name):
         cached = _analysis_cache.get(pair_name)
         if cached and time.time() - cached[0] < _ANALYSIS_TTL:
             return cached[1] + "\n\n🕐 Cached result (< 15 min old)"
-    # Fetch outside lock so concurrent requests for different pairs don't serialize
-    result = _fetch_analysis(pair_name)
-    with _analysis_cache_lock:
-        _analysis_cache[pair_name] = (time.time(), result)
+    # Acquire a per-pair lock so only one thread fires the API call for this pair;
+    # different pairs still fetch concurrently (no global serialization).
+    with _analysis_in_flight_lock:
+        if pair_name not in _analysis_in_flight:
+            _analysis_in_flight[pair_name] = Lock()
+        pair_lock = _analysis_in_flight[pair_name]
+    with pair_lock:
+        # Re-check after acquiring pair lock — another thread may have just populated it
+        with _analysis_cache_lock:
+            cached = _analysis_cache.get(pair_name)
+            if cached and time.time() - cached[0] < _ANALYSIS_TTL:
+                return cached[1] + "\n\n🕐 Cached result (< 15 min old)"
+        result = _fetch_analysis(pair_name)
+        with _analysis_cache_lock:
+            _analysis_cache[pair_name] = (time.time(), result)
     return result
 
 def _fetch_analysis(pair_name):
@@ -291,6 +307,8 @@ def _fetch_analysis(pair_name):
         atr_pct = round((atr / price) * 100, 3)
 
         client = _get_anthropic()
+        if not client:
+            return "AI analysis not available (API key not configured)."
         system_prompt = "You are a professional forex and commodities analyst. Respond in plain text only — no markdown, no asterisks. Always include a specific numeric ENTRY, SL, and TP. Use emojis sparingly."
         analysis_styles = [
             "Give a complete analysis of {pair} on the 15-minute timeframe. Cover: market bias, key levels, momentum, and a clear trade idea (BUY/SELL/WAIT) with entry, SL, and TP. Be direct and specific.",
@@ -310,7 +328,7 @@ def _fetch_analysis(pair_name):
         )
         prompt = style + data_context
         message = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model=_AI_MODEL,
             max_tokens=1000,
             system=system_prompt,
             messages=[{"role":"user","content":prompt}]
@@ -332,7 +350,8 @@ def get_sentiment():
         if value >= 75: emoji = "\U0001f7e2"
         elif value >= 55: emoji = "\U0001f7e1"
         elif value >= 45: emoji = "\U0001f7e0"
-        else: emoji = "\U0001f534"
+        elif value >= 25: emoji = "\U0001f534"
+        else: emoji = "\U0001f4a5"
         bar = "\u2588"*(value//10)+"\u2591"*(10-value//10)
         return "\U0001f9e0 MARKET SENTIMENT\n\nCrypto Fear & Greed:\n"+emoji+" "+str(value)+"/100 - "+classification+"\n["+bar+"]"
     except Exception as e:
@@ -506,7 +525,13 @@ def handle_message(chat_id, text, username, first_name=""):
             keywords = ["war","attack","fed","rate","inflation","trump","tariff","oil","gold","dollar","ukraine","iran","china","russia","market","crash","rally","ceasefire","ecb","boe","sanctions"]
             headlines = []
             for feed_url in ["https://www.forexlive.com/feed/news","https://feeds.bbci.co.uk/news/world/rss.xml"]:
-                feed = feedparser.parse(feed_url)
+                try:
+                    _resp = requests.get(feed_url, timeout=10)
+                    _resp.raise_for_status()  # treat 4xx/5xx as errors, not empty feeds
+                    feed = feedparser.parse(_resp.text)
+                except Exception as _feed_err:
+                    print(f"feed fetch error {feed_url}: {_feed_err}")
+                    continue
                 for entry in feed.entries[:15]:
                     title = entry.get("title","")
                     if any(k in title.lower() for k in keywords) and title not in headlines:
@@ -532,7 +557,7 @@ def handle_message(chat_id, text, username, first_name=""):
             style = random.choice(news_styles)
             headers = ["📰 LATEST NEWS", "📡 MARKET INTELLIGENCE", "🗞 BREAKING MARKET NEWS", "📊 MARKET UPDATE"]
             message = client.messages.create(
-                model="claude-haiku-4-5-20251001",
+                model=_AI_MODEL,
                 max_tokens=1000,
                 system=style,
                 messages=[{"role":"user","content":"Headlines:\n\n"+news_text}]
@@ -848,6 +873,9 @@ def handle_message(chat_id, text, username, first_name=""):
             parts = text.upper().replace("ADD:","").strip().split()
             pair = parts[0]
             side = parts[1]
+            if side not in ("BUY", "SELL"):
+                send_message(chat_id, "❌ Invalid side '" + side + "'. Use BUY or SELL.\nFormat:\nADD: EURUSD BUY 1.1200 SL:1.1150 TP:1.1300 LOTS:0.1", main_menu())
+                return
             entry = float(parts[2])
             sl = float([p for p in parts if p.startswith("SL:")][0].replace("SL:",""))
             tp = float([p for p in parts if p.startswith("TP:")][0].replace("TP:",""))
@@ -940,6 +968,9 @@ def handle_message(chat_id, text, username, first_name=""):
             parts = text.upper().replace("JOURNAL:","").strip().split()
             pair = parts[0]
             side = parts[1]
+            if side not in ("BUY", "SELL"):
+                send_message(chat_id, "❌ Invalid side '" + side + "'. Use BUY or SELL.\nFormat:\nJOURNAL: EURUSD BUY WIN +50pips Good entry at support", main_menu())
+                return
             result = parts[2]
             pips_match = re.search(r"[-+]?\d+(\.\d+)?", parts[3]) if len(parts) > 3 else None
             pips_val = float(pips_match.group()) if pips_match else 0.0
@@ -1017,6 +1048,8 @@ def handle_message(chat_id, text, username, first_name=""):
                     _tmp = ib_file + '.tmp'
                     with open(_tmp, 'w') as f:
                         json.dump(clients, f)
+                        f.flush()
+                        os.fsync(f.fileno())
                     os.replace(_tmp, ib_file)
                 finally:
                     fcntl.flock(_lf, fcntl.LOCK_UN)
@@ -1135,19 +1168,25 @@ def handle_message(chat_id, text, username, first_name=""):
     elif len(text.strip()) >= 10:
         # Free-form question — anything that didn't match a known command/button.
         # Minimum 10 chars to skip accidental taps; per-user 30s cooldown to cap API cost.
-        now_ts = time.time()
-        last_qa = _qa_last_time.get(chat_id, 0)
-        if now_ts - last_qa < _qa_cooldown:
+        # _qa_lock makes the check-and-set atomic under the 20-worker executor.
+        with _qa_lock:
+            now_ts = time.time()
+            cooldown_hit = now_ts - _qa_last_time.get(chat_id, 0) < _qa_cooldown
+            if not cooldown_hit:
+                _qa_last_time[chat_id] = now_ts
+        if cooldown_hit:
             send_message(chat_id, "Please wait a moment before asking another question.", main_menu())
         elif not ANTHROPIC_API_KEY:
             send_message(chat_id, "AI assistant is currently unavailable. Use the menu for live data.", main_menu())
         else:
-            _qa_last_time[chat_id] = now_ts
             send_typing(chat_id)
             try:
                 client = _get_anthropic()
+                if not client:
+                    send_message(chat_id, "AI assistant is currently unavailable.", main_menu())
+                    return
                 message = client.messages.create(
-                    model="claude-haiku-4-5-20251001",
+                    model=_AI_MODEL,
                     max_tokens=300,
                     system=(
                         "You are the Trading Nova assistant, answering a free-form question in a "

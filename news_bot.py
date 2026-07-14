@@ -43,6 +43,8 @@ def _save_cursors():
         tmp = CURSORS_FILE + '.tmp'
         with open(tmp, 'w') as f:
             json.dump(_img_cursors, f)
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(tmp, CURSORS_FILE)
     except Exception as e:
         print(f"save cursors error: {e}")
@@ -67,7 +69,7 @@ def send_photo_channel(photo_name, caption="", parse_mode=None):
             r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
                 json=payload, timeout=15)
             if r.ok:
-                return
+                return True
             print(f"send_photo_channel: article image URL rejected ({r.status_code}), falling back")
         except Exception as e:
             print(f"send_photo_channel article image error: {e}")
@@ -103,8 +105,10 @@ def send_photo_channel(photo_name, caption="", parse_mode=None):
                 json={"chat_id": CHANNEL_ID, "text": cap, "disable_web_page_preview": True,
                       **({"parse_mode": parse_mode} if parse_mode else {})}, timeout=15)
         r.raise_for_status()
+        return True
     except Exception as e:
         print(f"send_photo error: {e}")
+        return False
 
 FEEDS = [
     "https://feeds.bbci.co.uk/news/world/rss.xml",
@@ -186,7 +190,9 @@ def collect_news():
     high_impact = []  # list of (title, url, image)
     for feed_url in FEEDS:
         try:
-            feed = feedparser.parse(feed_url)
+            _resp = requests.get(feed_url, timeout=10)
+            _resp.raise_for_status()  # treat 4xx/5xx as errors, not empty feeds
+            feed = feedparser.parse(_resp.text)
             for entry in feed.entries[:20]:
                 title = entry.get("title","")
                 url = entry.get("link","")
@@ -228,6 +234,8 @@ def _save_seen(seen):
     try:
         with open(tmp, "w") as f:
             json.dump(seen, f)
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(tmp, SEEN_FILE)
     except Exception as e:
         print(f"save seen error: {e}")
@@ -303,17 +311,6 @@ def create_report(items):
     except Exception as e:
         print("AI error: "+str(e))
         return None, top_links
-
-def send_channel(msg, parse_mode=None):
-    try:
-        payload = {"chat_id": CHANNEL_ID, "text": msg[:4096], "disable_web_page_preview": True}
-        if parse_mode:
-            payload["parse_mode"] = parse_mode
-        r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
-            json=payload, timeout=10)
-        r.raise_for_status()
-    except Exception as e:
-        print("Send error: "+str(e))
 
 def main():
     print("News bot started...")
@@ -404,16 +401,18 @@ def main():
                         # priority-ordered: high-impact first) over the generic pool.
                         article_image = next((img for _, _, img in items if img), None)
                         photo = article_image or _next_photo("news", NEWS_IMAGES)
-                        send_photo_channel(photo, caption=msg, parse_mode=parse_mode)
-                        print(f"Sent {hour}:00 update!")
-                        now_t = time.time()
-                        for it in items:
-                            seen[it[0]] = now_t
-                        # Prune anything older than 2x the TTL so the file doesn't grow forever
-                        seen = {k: v for k, v in seen.items() if now_t - v < SEEN_TTL_HOURS * 3600 * 2}
-                        _save_seen(seen)
-                        sent_today[send_key] = True  # only mark sent when content was actually delivered
-                        _save_sent_slots(sent_today)
+                        if send_photo_channel(photo, caption=msg, parse_mode=parse_mode):
+                            print(f"Sent {hour}:00 update!")
+                            now_t = time.time()
+                            for it in items:
+                                seen[it[0]] = now_t
+                            # Prune anything older than 2x the TTL so the file doesn't grow forever
+                            seen = {k: v for k, v in seen.items() if now_t - v < SEEN_TTL_HOURS * 3600 * 2}
+                            _save_seen(seen)
+                            sent_today[send_key] = True  # only mark sent when content was actually delivered
+                            _save_sent_slots(sent_today)
+                        else:
+                            print(f"send_photo_channel failed for {send_key}, slot not marked — will retry")
                 time.sleep(600)
                 continue
 

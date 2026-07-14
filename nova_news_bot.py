@@ -8,7 +8,8 @@ import requests
 import anthropic
 import feedparser
 import pytz
-from datetime import datetime
+from bs4 import BeautifulSoup
+from datetime import datetime, timedelta
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
@@ -89,7 +90,9 @@ def get_news(category):
     headlines = []
     for feed_url in feeds:
         try:
-            feed = feedparser.parse(feed_url)
+            _resp = requests.get(feed_url, timeout=10)
+            _resp.raise_for_status()  # treat 4xx/5xx as errors, not empty feeds
+            feed = feedparser.parse(_resp.text)
             entries = feed.entries[:]
             random.shuffle(entries)
             for entry in entries[:30]:
@@ -176,8 +179,6 @@ TITLES = {
 def _fetch_calendar_today():
     """Sync helper: fetch today's (or tomorrow's) economic calendar for asyncio.to_thread."""
     try:
-        from bs4 import BeautifulSoup
-        from datetime import timedelta
         tz2 = pytz.timezone("Europe/Athens")
         today = datetime.now(tz2).strftime("%Y-%m-%d")
         now_str = datetime.now(tz2).strftime("%d/%m/%Y")
@@ -214,7 +215,7 @@ def _fetch_calendar_today():
             for row in rows2[:8]:
                 try:
                     tds = row.find_all("td")
-                    if len(tds) < 3: continue
+                    if len(tds) < 4: continue
                     ev_time = tds[0].text.strip()
                     currency = tds[1].text.strip()
                     ev_name = tds[3].text.strip() if len(tds)>3 else ""
@@ -328,7 +329,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             keywords = ["war","fed","rate","trump","oil","gold","ukraine","iran","market","crash","rally"]
             for feed_url in feeds:
                 try:
-                    feed = feedparser.parse(feed_url)
+                    _resp = requests.get(feed_url, timeout=10)
+                    _resp.raise_for_status()  # treat 4xx/5xx as errors, not empty feeds
+                    feed = feedparser.parse(_resp.text)
                     for entry in feed.entries[:15]:
                         title = entry.get("title","")
                         if any(k in title.lower() for k in keywords):

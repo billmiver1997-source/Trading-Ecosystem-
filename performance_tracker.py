@@ -87,6 +87,8 @@ def save_trades(trades):
     try:
         with open(tmp, 'w') as f:
             json.dump(trades, f)
+            f.flush()
+            os.fsync(f.fileno())  # ensure bytes reach disk before atomic rename
         os.replace(tmp, TRADES_FILE)
     except Exception as e:
         print(f"save_trades error: {e}")
@@ -105,6 +107,8 @@ def save_stats(stats):
     try:
         with open(tmp, 'w') as f:
             json.dump(stats, f)
+            f.flush()
+            os.fsync(f.fileno())  # ensure bytes reach disk before atomic rename
         os.replace(tmp, STATS_FILE)
     except Exception as e:
         print(f"save_stats error: {e}")
@@ -129,6 +133,8 @@ def _append_journal(entry):
             tmp = JOURNAL_FILE + ".tmp"
             with open(tmp, "w") as f:
                 json.dump(entries, f)
+                f.flush()
+                os.fsync(f.fileno())  # ensure bytes reach disk before atomic rename
             os.replace(tmp, JOURNAL_FILE)
         finally:
             fcntl.flock(_lf, fcntl.LOCK_UN)
@@ -195,8 +201,8 @@ def send_result_photo(photo_path, caption, reply_to_message_id=None):
         if photo_path and os.path.exists(photo_path):
             try:
                 os.remove(photo_path)
-            except OSError:
-                pass
+            except OSError as e:
+                print(f"Failed to delete result chart file {photo_path}: {e}")
 
 def get_price(symbol):
     try:
@@ -358,8 +364,11 @@ def _check_trades_inner(price_cache):
                 photo_path = None
             send_result_photo(photo_path, msg, sig_msg_id)
             print("TP hit: " + name)
-            _append_journal({"pair":name,"side":signal,"result":"WIN","pips":"+"+str(round(pips,4)),"note":"Auto - TP Hit","date":now,
-                              "symbol":symbol,"entry":entry,"sl":sl,"tp":tp,"entry_time":entry_time,"close_time":time.time()})
+            try:
+                _append_journal({"pair":name,"side":signal,"result":"WIN","pips":"+"+str(round(pips,4)),"note":"Auto - TP Hit","date":now,
+                                  "symbol":symbol,"entry":entry,"sl":sl,"tp":tp,"entry_time":entry_time,"close_time":time.time()})
+            except Exception as journal_err:
+                print(f"journal append error {name} (WIN): {journal_err}")
 
         elif result == "BE":
             msg = (
@@ -376,8 +385,11 @@ def _check_trades_inner(price_cache):
                 photo_path = None
             send_result_photo(photo_path, msg, sig_msg_id)
             print("BE closed: " + name)
-            _append_journal({"pair":name,"side":signal,"result":"BE","pips":"0","note":"Auto - Breakeven","date":now,
-                              "symbol":symbol,"entry":entry,"sl":sl,"tp":tp,"entry_time":entry_time,"close_time":time.time()})
+            try:
+                _append_journal({"pair":name,"side":signal,"result":"BE","pips":"0","note":"Auto - Breakeven","date":now,
+                                  "symbol":symbol,"entry":entry,"sl":sl,"tp":tp,"entry_time":entry_time,"close_time":time.time()})
+            except Exception as journal_err:
+                print(f"journal append error {name} (BE): {journal_err}")
 
         else:  # LOSS
             _is_raw = any(k in name for k in ("BTC", "SOL", "Oil"))
@@ -403,8 +415,11 @@ def _check_trades_inner(price_cache):
                 photo_path = None
             send_result_photo(photo_path, msg, sig_msg_id)
             print("SL hit: " + name)
-            _append_journal({"pair":name,"side":signal,"result":"LOSS","pips":"-"+str(round(pips,4)),"note":"Auto - SL Hit","date":now,
-                              "symbol":symbol,"entry":entry,"sl":sl,"tp":tp,"entry_time":entry_time,"close_time":time.time()})
+            try:
+                _append_journal({"pair":name,"side":signal,"result":"LOSS","pips":"-"+str(round(pips,4)),"note":"Auto - SL Hit","date":now,
+                                  "symbol":symbol,"entry":entry,"sl":sl,"tp":tp,"entry_time":entry_time,"close_time":time.time()})
+            except Exception as journal_err:
+                print(f"journal append error {name} (LOSS): {journal_err}")
 
     if closed:
         save_stats(stats)  # only write when stats actually changed

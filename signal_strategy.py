@@ -10,6 +10,10 @@ import json
 import time
 from datetime import datetime
 import pytz
+try:
+    from bs4 import BeautifulSoup as _BeautifulSoup
+except ImportError:
+    _BeautifulSoup = None
 
 try:
     import chart
@@ -114,6 +118,10 @@ def _save_json(path, data):
         return True
     except Exception as e:
         print(f"save {path} error: {e}")
+        try:
+            os.unlink(tmp)
+        except OSError as e:
+            print(f"_save_json: failed to delete temp {tmp}: {e}")
         return False
 
 
@@ -210,9 +218,8 @@ def send_channel_text(msg):
 def get_data(symbol):
     try:
         ticker = yf.Ticker(symbol)
-        df = ticker.history(period="30d", interval="1h")
-        if len(df) < 210:
-            df = ticker.history(period="60d", interval="1h")
+        # Fetch 60d directly — avoids a wasted 30d call on pairs that routinely need it
+        df = ticker.history(period="60d", interval="1h")
         if len(df) < 210:
             return None
         return df
@@ -264,7 +271,7 @@ def find_setup(df, name):
         if vol.iloc[i - 1] < vol_avg * vol_min_ratio:
             return None
 
-    price = close.iloc[-1]
+    price = open_.iloc[-1]
     confirm_bar_time = df.index[i].isoformat()
 
     bull_trend = ema50.iloc[i] > ema200.iloc[i]
@@ -365,8 +372,10 @@ def circuit_breaker_tripped(name):
 
 def get_news_blocked_currencies():
     """Returns set of currency codes with high-impact events within -15/+30 minutes."""
+    if _BeautifulSoup is None:
+        return set()
     try:
-        from bs4 import BeautifulSoup
+        BeautifulSoup = _BeautifulSoup
         tz = pytz.timezone("Europe/Athens")
         now = datetime.now(tz)
         today = now.strftime("%Y-%m-%d")

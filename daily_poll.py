@@ -60,6 +60,8 @@ def _save_cursor_state(state):
     try:
         with open(tmp, "w") as f:
             json.dump(state, f)
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(tmp, CURSOR_FILE)
     except Exception as e:
         print(f"save cursor error: {e}")

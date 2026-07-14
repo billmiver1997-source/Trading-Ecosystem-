@@ -113,8 +113,8 @@ def send_channel_photo(photo_path, caption=""):
     finally:
         try:
             os.remove(photo_path)
-        except OSError:
-            pass
+        except OSError as e:
+            print(f"Failed to delete chart {photo_path}: {e}")
 
 
 def send_all(msg):
@@ -181,7 +181,8 @@ def backtest_pair(name, symbol):
         if vol_min_ratio is not None:
             if vol is None:
                 continue
-            vol_avg = vol.iloc[max(0, i-20):i].mean()
+            # Exclude the pullback bar (i-1) from its own baseline — matches signal_strategy.py
+            vol_avg = vol.iloc[max(0, i - 21):i - 1].mean()
             if vol_avg == 0 or pd.isna(vol_avg) or pd.isna(vol.iloc[i-1]):
                 continue
             if vol.iloc[i-1] < vol_avg * vol_min_ratio:

@@ -104,6 +104,8 @@ def _save_json(path, data):
     try:
         with open(tmp, "w") as f:
             json.dump(data, f)
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(tmp, path)
     except Exception as e:
         print(f"save {path} error: {e}")
@@ -233,6 +235,7 @@ def main():
             except Exception as e:
                 print(f"DXY fetch error: {e}")
 
+            state_changed = False
             for name, symbol in PAIRS.items():
                 try:
                     if name == "DXY":  # DXY is a correlation reference, not a tradable pair
@@ -245,12 +248,15 @@ def main():
                     if setup and not was_near:
                         if send_watchlist_alert(name, setup):
                             state[name] = {"near": True}
+                            state_changed = True
                     elif not setup and was_near:
                         # Moved out of the zone — allow a fresh alert on the next approach
                         state[name] = {"near": False}
+                        state_changed = True
                 except Exception as e:
                     print(f"Error {name}: {e}")
-            _save_json(STATE_FILE, state)
+            if state_changed:
+                _save_json(STATE_FILE, state)
         except Exception as e:
             print(f"Main error: {e}")
 
