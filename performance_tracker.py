@@ -97,7 +97,7 @@ JOURNAL_FILE = "/root/tradingbot/journal.json"
 def _append_journal(entry):
     """Atomically append one entry to journal.json, capped at 200 entries."""
     lock_path = JOURNAL_FILE + ".lock"
-    with open(lock_path, "w") as _lf:
+    with open(lock_path, "a") as _lf:
         fcntl.flock(_lf, fcntl.LOCK_EX)
         try:
             entries = []
@@ -178,8 +178,8 @@ def send_result_photo(photo_path, caption, reply_to_message_id=None):
         if photo_path and os.path.exists(photo_path):
             try:
                 os.remove(photo_path)
-            except OSError:
-                pass
+            except OSError as e:
+                print(f"Failed to delete result chart file {photo_path}: {e}")
 
 def get_price(symbol):
     try:
@@ -202,7 +202,7 @@ def check_trades():
             price_cache[symbol] = get_price(symbol)
 
     lock_path = TRADES_FILE + '.lock'
-    with open(lock_path, 'w') as _lf:
+    with open(lock_path, 'a') as _lf:
         fcntl.flock(_lf, fcntl.LOCK_EX)
         try:
             _check_trades_inner(price_cache)
@@ -341,8 +341,11 @@ def _check_trades_inner(price_cache):
                 photo_path = None
             send_result_photo(photo_path, msg, sig_msg_id)
             print("TP hit: " + name)
-            _append_journal({"pair":name,"side":signal,"result":"WIN","pips":"+"+str(round(pips,4)),"note":"Auto - TP Hit","date":now,
-                              "symbol":symbol,"entry":entry,"sl":sl,"tp":tp,"entry_time":entry_time,"close_time":time.time()})
+            try:
+                _append_journal({"pair":name,"side":signal,"result":"WIN","pips":"+"+str(round(pips,4)),"note":"Auto - TP Hit","date":now,
+                                  "symbol":symbol,"entry":entry,"sl":sl,"tp":tp,"entry_time":entry_time,"close_time":time.time()})
+            except Exception as journal_err:
+                print(f"journal append error {name} (WIN): {journal_err}")
 
         elif result == "BE":
             msg = (
@@ -359,8 +362,11 @@ def _check_trades_inner(price_cache):
                 photo_path = None
             send_result_photo(photo_path, msg, sig_msg_id)
             print("BE closed: " + name)
-            _append_journal({"pair":name,"side":signal,"result":"BE","pips":"0","note":"Auto - Breakeven","date":now,
-                              "symbol":symbol,"entry":entry,"sl":sl,"tp":tp,"entry_time":entry_time,"close_time":time.time()})
+            try:
+                _append_journal({"pair":name,"side":signal,"result":"BE","pips":"0","note":"Auto - Breakeven","date":now,
+                                  "symbol":symbol,"entry":entry,"sl":sl,"tp":tp,"entry_time":entry_time,"close_time":time.time()})
+            except Exception as journal_err:
+                print(f"journal append error {name} (BE): {journal_err}")
 
         else:  # LOSS
             _is_raw = any(k in name for k in ("BTC", "SOL", "Oil"))
@@ -386,8 +392,11 @@ def _check_trades_inner(price_cache):
                 photo_path = None
             send_result_photo(photo_path, msg, sig_msg_id)
             print("SL hit: " + name)
-            _append_journal({"pair":name,"side":signal,"result":"LOSS","pips":"-"+str(round(pips,4)),"note":"Auto - SL Hit","date":now,
-                              "symbol":symbol,"entry":entry,"sl":sl,"tp":tp,"entry_time":entry_time,"close_time":time.time()})
+            try:
+                _append_journal({"pair":name,"side":signal,"result":"LOSS","pips":"-"+str(round(pips,4)),"note":"Auto - SL Hit","date":now,
+                                  "symbol":symbol,"entry":entry,"sl":sl,"tp":tp,"entry_time":entry_time,"close_time":time.time()})
+            except Exception as journal_err:
+                print(f"journal append error {name} (LOSS): {journal_err}")
 
     if closed:
         save_stats(stats)  # only write when stats actually changed
