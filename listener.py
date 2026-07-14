@@ -350,7 +350,8 @@ def get_sentiment():
         if value >= 75: emoji = "\U0001f7e2"
         elif value >= 55: emoji = "\U0001f7e1"
         elif value >= 45: emoji = "\U0001f7e0"
-        else: emoji = "\U0001f534"
+        elif value >= 25: emoji = "\U0001f534"
+        else: emoji = "\U0001f4a5"
         bar = "\u2588"*(value//10)+"\u2591"*(10-value//10)
         return "\U0001f9e0 MARKET SENTIMENT\n\nCrypto Fear & Greed:\n"+emoji+" "+str(value)+"/100 - "+classification+"\n["+bar+"]"
     except Exception as e:

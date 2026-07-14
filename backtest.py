@@ -92,8 +92,8 @@ def send_channel_photo(photo_path, caption=""):
     finally:
         try:
             os.remove(photo_path)
-        except OSError:
-            pass
+        except OSError as e:
+            print(f"Failed to delete chart {photo_path}: {e}")
 
 
 def send_all(msg):

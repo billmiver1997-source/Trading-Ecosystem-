@@ -112,6 +112,8 @@ def _append_journal(entry):
             tmp = JOURNAL_FILE + ".tmp"
             with open(tmp, "w") as f:
                 json.dump(entries, f)
+                f.flush()
+                os.fsync(f.fileno())  # ensure bytes reach disk before atomic rename
             os.replace(tmp, JOURNAL_FILE)
         finally:
             fcntl.flock(_lf, fcntl.LOCK_UN)

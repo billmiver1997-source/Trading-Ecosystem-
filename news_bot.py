@@ -43,6 +43,8 @@ def _save_cursors():
         tmp = CURSORS_FILE + '.tmp'
         with open(tmp, 'w') as f:
             json.dump(_img_cursors, f)
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(tmp, CURSORS_FILE)
     except Exception as e:
         print(f"save cursors error: {e}")
@@ -232,6 +234,8 @@ def _save_seen(seen):
     try:
         with open(tmp, "w") as f:
             json.dump(seen, f)
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(tmp, SEEN_FILE)
     except Exception as e:
         print(f"save seen error: {e}")

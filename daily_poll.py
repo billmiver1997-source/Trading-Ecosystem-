@@ -38,6 +38,8 @@ def _save_cursor(idx):
     try:
         with open(tmp, "w") as f:
             json.dump({"idx": idx}, f)
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(tmp, CURSOR_FILE)
     except Exception as e:
         print(f"save cursor error: {e}")

@@ -104,6 +104,8 @@ def _save_json(path, data):
     try:
         with open(tmp, "w") as f:
             json.dump(data, f)
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(tmp, path)
     except Exception as e:
         print(f"save {path} error: {e}")

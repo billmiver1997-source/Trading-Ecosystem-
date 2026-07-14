@@ -40,6 +40,8 @@ def _save_state(state):
     try:
         with open(tmp, "w") as f:
             json.dump(state, f)
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(tmp, STATE_FILE)
     except Exception as e:
         print(f"save state error: {e}")
