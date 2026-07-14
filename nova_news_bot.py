@@ -89,7 +89,8 @@ def get_news(category):
     headlines = []
     for feed_url in feeds:
         try:
-            feed = feedparser.parse(feed_url)
+            _resp = requests.get(feed_url, timeout=10)
+            feed = feedparser.parse(_resp.text)
             entries = feed.entries[:]
             random.shuffle(entries)
             for entry in entries[:30]:
@@ -328,7 +329,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             keywords = ["war","fed","rate","trump","oil","gold","ukraine","iran","market","crash","rally"]
             for feed_url in feeds:
                 try:
-                    feed = feedparser.parse(feed_url)
+                    _resp = requests.get(feed_url, timeout=10)
+                    feed = feedparser.parse(_resp.text)
                     for entry in feed.entries[:15]:
                         title = entry.get("title","")
                         if any(k in title.lower() for k in keywords):

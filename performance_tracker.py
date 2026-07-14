@@ -66,6 +66,8 @@ def save_trades(trades):
     try:
         with open(tmp, 'w') as f:
             json.dump(trades, f)
+            f.flush()
+            os.fsync(f.fileno())  # ensure bytes reach disk before atomic rename
         os.replace(tmp, TRADES_FILE)
     except Exception as e:
         print(f"save_trades error: {e}")
@@ -84,6 +86,8 @@ def save_stats(stats):
     try:
         with open(tmp, 'w') as f:
             json.dump(stats, f)
+            f.flush()
+            os.fsync(f.fileno())  # ensure bytes reach disk before atomic rename
         os.replace(tmp, STATS_FILE)
     except Exception as e:
         print(f"save_stats error: {e}")

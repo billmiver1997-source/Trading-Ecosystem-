@@ -186,7 +186,8 @@ def collect_news():
     high_impact = []  # list of (title, url, image)
     for feed_url in FEEDS:
         try:
-            feed = feedparser.parse(feed_url)
+            _resp = requests.get(feed_url, timeout=10)
+            feed = feedparser.parse(_resp.text)
             for entry in feed.entries[:20]:
                 title = entry.get("title","")
                 url = entry.get("link","")
