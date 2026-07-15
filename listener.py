@@ -305,6 +305,8 @@ def _prewarm_analysis_cache():
     are cheap no-ops — real work happens roughly once per pair per TTL window."""
     while True:
         for pair_name in SYMBOLS:
+            if pair_name == "DXY":
+                continue
             try:
                 get_analysis(pair_name)
             except Exception as e:
@@ -528,7 +530,7 @@ def handle_message(chat_id, text, username, first_name=""):
             soup = BeautifulSoup(r.json().get("data",""),"html.parser")
             rows_inv = soup.find_all("tr",id=lambda x: x and x.startswith("eventRowId_"))
             events = []
-            for row in rows_inv[:10]:
+            for row in rows_inv:
                 try:
                     tds = row.find_all("td")
                     if len(tds) < 3: continue
@@ -542,6 +544,8 @@ def handle_message(chat_id, text, username, first_name=""):
                         if forecast: line += " F:"+forecast
                         if previous: line += " P:"+previous
                         events.append(line)
+                        if len(events) >= 10:
+                            break
                 except Exception as e:
                     print(f"Calendar row parse error: {e}")
                     continue
@@ -805,7 +809,7 @@ def handle_message(chat_id, text, username, first_name=""):
                     "Oil/USD": 0.01, "BTC/USD": 1.0, "SOL/USD": 0.01, "DXY": 0.001,
                 }
 
-                def _fetch_pl(t):
+                def _fetch_portfolio_pl(t):
                     symbol = SYMBOLS.get(t["name"], "")
                     if not symbol: return t, None
                     try:
@@ -818,7 +822,7 @@ def handle_message(chat_id, text, username, first_name=""):
                         return t, None
 
                 with ThreadPoolExecutor(max_workers=8) as ex:
-                    pl_results = list(ex.map(_fetch_pl, trades))
+                    pl_results = list(ex.map(_fetch_portfolio_pl, trades))
 
                 total_pl = 0
                 lines_p = ["💼 PORTFOLIO | Open Signals\n"]
@@ -861,7 +865,7 @@ def handle_message(chat_id, text, username, first_name=""):
                 if open_trades:
                     lines_mt.append("Open (" + str(len(open_trades)) + "):")
 
-                    def _fetch_pl(t):
+                    def _fetch_mytrades_pl(t):
                         canonical = ALIASES.get(t["pair"].lower(), t["pair"])
                         symbol = SYMBOLS.get(canonical)
                         if not symbol:
@@ -876,7 +880,7 @@ def handle_message(chat_id, text, username, first_name=""):
                             return t, None
 
                     with ThreadPoolExecutor(max_workers=8) as ex:
-                        pl_results = list(ex.map(_fetch_pl, open_trades))
+                        pl_results = list(ex.map(_fetch_mytrades_pl, open_trades))
                     _pip_sizes_mt = {
                         "XAUUSD": 0.01, "GOLD": 0.01,
                         "SILVERUSD": 0.001, "SILVER": 0.001,
@@ -1062,6 +1066,9 @@ def handle_message(chat_id, text, username, first_name=""):
             send_message(chat_id, "💰 IB tracker temporarily unavailable.", main_menu())
 
     elif text_lower.startswith("client:"):
+        if str(chat_id) != OWNER_ID:
+            send_message(chat_id, "❌ Not authorized.", main_menu())
+            return
         try:
             ib_file = "/root/tradingbot/ib_clients.json"
             parts = text.upper().replace("CLIENT:","").strip().split()

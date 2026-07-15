@@ -120,8 +120,8 @@ def _save_json(path, data):
         print(f"save {path} error: {e}")
         try:
             os.unlink(tmp)
-        except OSError as e:
-            print(f"_save_json: failed to delete temp {tmp}: {e}")
+        except OSError as _oe:
+            print(f"_save_json: failed to delete temp {tmp}: {_oe}")
         return False
 
 
@@ -328,7 +328,7 @@ def format_setup(name, setup):
     session = get_session_label()
     sl_dist = abs(setup["sl"] - setup["price"])
     rr_dist = abs(setup["tp"] - setup["price"])
-    rr_ratio = round(rr_dist / sl_dist, 1) if sl_dist > 0 else RR
+    rr_ratio = round(rr_dist / sl_dist, 1) if sl_dist > 0 else 0.0
     return (
         "\U0001f3af TRADING SETUP — " + name + "\n\n"
         + emoji + "  " + now + "  |  " + session + "\n"
@@ -420,7 +420,7 @@ def get_news_blocked_currencies():
 def main():
     print("Pullback strategy started (1H timeframe, USD/CAD + Oil/USD + NZD/USD + BTC/USD + SOL/USD)...")
     tripped_alerted = set()
-    news_blocked: set = set()
+    news_blocked: set
 
     while True:
         try:
@@ -486,33 +486,26 @@ def main():
                     except Exception as chart_err:
                         print(f"Chart generation failed for {name}: {chart_err}")
                         photo_path = None
-                    msg_id = send_signal_photo(msg, photo_path)
-                    if msg_id is None:
-                        # Telegram delivery failed — don't record dedup or open trade
-                        print(f"Signal send failed for {name} — will retry next cycle.")
-                        continue
-                    # Register trade and dedup only after confirmed delivery; exclusive lock
-                    # to prevent a race with a simultaneously restarted second instance.
-                    # add_trade() is called INSIDE the lock so a concurrent process that
-                    # wins the race on dedup cannot also race on writing the trade entry.
+                    # Acquire exclusive lock before sending: prevents two concurrent
+                    # instances from both passing the dedup check and both posting to Telegram.
                     with open(LAST_SIGNAL_LOCK_PATH, "a") as _lf:
                         fcntl.flock(_lf, fcntl.LOCK_EX)
                         try:
                             last_signals = _load_json(LAST_SIGNAL_FILE, {})
-                            # Re-check under exclusive lock: a concurrent process may have
-                            # already written this dedup entry between our initial check and now.
                             if last_signals.get(dedup_key, {}).get("confirm_bar_time") == setup["confirm_bar_time"]:
                                 continue
+                            msg_id = send_signal_photo(msg, photo_path)
+                            if msg_id is None:
+                                print(f"Signal send failed for {name} — will retry next cycle.")
+                                continue
                             last_signals[dedup_key] = {"time": time.time(), "confirm_bar_time": setup["confirm_bar_time"]}
-                            # Only add the trade if dedup write succeeds; a failed write
-                            # would leave no dedup entry, causing a repeated signal next cycle.
                             if _save_json(LAST_SIGNAL_FILE, last_signals):
                                 add_trade(name, setup, signal_message_id=msg_id)
                             else:
                                 print(f"Dedup write failed for {name} — trade not recorded to prevent repeat signal")
+                            print(f"Signal sent: {name} {setup['bias']} entry:{setup['price']} sl:{setup['sl']} tp:{setup['tp']} msg_id:{msg_id}")
                         finally:
                             fcntl.flock(_lf, fcntl.LOCK_UN)
-                    print(f"Signal sent: {name} {setup['bias']} entry:{setup['price']} sl:{setup['sl']} tp:{setup['tp']} msg_id:{msg_id}")
                 except Exception as e:
                     print(f"Error {name}: {e}")
                     continue
