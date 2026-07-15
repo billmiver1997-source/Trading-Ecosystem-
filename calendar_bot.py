@@ -57,9 +57,15 @@ def send_channel(msg):
 def get_calendar():
     try:
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            # Truncated UA (missing the "(KHTML, like Gecko) Chrome/x Safari/x" suffix)
+            # was getting flagged by investing.com's bot detection as a 403 — a complete,
+            # realistic browser fingerprint (UA + Accept + Origin) passes through clean.
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "X-Requested-With": "XMLHttpRequest",
-            "Referer": "https://www.investing.com/economic-calendar/"
+            "Referer": "https://www.investing.com/economic-calendar/",
+            "Origin": "https://www.investing.com",
+            "Accept": "*/*",
+            "Accept-Language": "en-US,en;q=0.9",
         }
         tz_athens = pytz.timezone("Europe/Athens")
         today = datetime.now(tz_athens).strftime("%Y-%m-%d")
