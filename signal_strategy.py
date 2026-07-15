@@ -355,7 +355,8 @@ def add_trade(name, setup, signal_message_id=None):
         try:
             trades = _load_json(trades_file, [])
             trades.append(new_trade)
-            _save_json(trades_file, trades)
+            if not _save_json(trades_file, trades):
+                print(f"add_trade: failed to write {trades_file} — trade {name} {signal} NOT recorded")
         finally:
             fcntl.flock(_lf, fcntl.LOCK_UN)
 
@@ -420,7 +421,7 @@ def get_news_blocked_currencies():
 def main():
     print("Pullback strategy started (1H timeframe, USD/CAD + Oil/USD + NZD/USD + BTC/USD + SOL/USD)...")
     tripped_alerted = set()
-    news_blocked: set
+    news_blocked: set = set()
 
     while True:
         try:
@@ -493,6 +494,11 @@ def main():
                         try:
                             last_signals = _load_json(LAST_SIGNAL_FILE, {})
                             if last_signals.get(dedup_key, {}).get("confirm_bar_time") == setup["confirm_bar_time"]:
+                                if photo_path:
+                                    try:
+                                        os.remove(photo_path)
+                                    except OSError:
+                                        pass
                                 continue
                             msg_id = send_signal_photo(msg, photo_path)
                             if msg_id is None:

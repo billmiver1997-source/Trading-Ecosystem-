@@ -375,6 +375,8 @@ def _fetch_analysis(pair_name):
         )
         tz = pytz.timezone("Europe/Athens")
         now = datetime.now(tz).strftime("%d/%m/%Y %H:%M")
+        if not message.content:
+            return "Analysis temporarily unavailable. Please try again."
         return pair_name+" | "+now+"\n\n"+message.content[0].text
     except Exception as e:
         print(f"get_analysis error ({pair_name}): {e}")
@@ -997,7 +999,7 @@ def handle_message(chat_id, text, username, first_name=""):
                 lines_j = ["📓 TRADE JOURNAL\n"]
                 for entry in entries[-5:]:
                     result_emoji = "🟢" if entry.get("result","") == "WIN" else "🔴"
-                    lines_j.append(result_emoji+" "+entry.get("pair","?")+" "+entry.get("side","?")+" | "+entry.get("result","")+" "+entry.get("pips","")+"\n   "+entry.get("note",""))
+                    lines_j.append(result_emoji+" "+entry.get("pair","?")+" "+entry.get("side","?")+" | "+entry.get("result","")+" "+str(entry.get("pips",""))+"\n   "+entry.get("note",""))
                 send_message(chat_id, "\n".join(lines_j), main_menu())
         except Exception as e:
             print(f"Journal handler error: {e}")
