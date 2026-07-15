@@ -397,7 +397,13 @@ def get_news_blocked_currencies():
             headers=headers, data=payload, timeout=10,
         )
         r.raise_for_status()
-        soup = BeautifulSoup(r.json().get("data", ""), "html.parser")
+        try:
+            data_html = r.json().get("data", "")
+        except ValueError as _json_err:
+            # HTTP 200 but non-JSON body (e.g. bot-detection redirect page)
+            print(f"News filter DISABLED (JSON parse failed: {_json_err}) — all pairs unblocked this cycle")
+            return set()
+        soup = BeautifulSoup(data_html, "html.parser")
         blocked = set()
         for row in soup.find_all("tr", id=lambda x: x and x.startswith("eventRowId_")):
             try:
@@ -503,8 +509,8 @@ def main():
                                 if photo_path:
                                     try:
                                         os.remove(photo_path)
-                                    except OSError:
-                                        pass
+                                    except OSError as _e:
+                                        print(f"cleanup dedup-rejected chart {photo_path}: {_e}")
                                 continue
                             msg_id = send_signal_photo(msg, photo_path)
                             if msg_id is None:

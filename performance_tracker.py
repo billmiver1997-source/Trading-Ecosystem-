@@ -456,7 +456,8 @@ def main():
                 last_stats_day = today
                 _save_sent_day(today)
         except Exception as e:
-            print("Error: "+str(e))
+            import traceback
+            traceback.print_exc()
         time.sleep(60)
 
 if __name__ == "__main__":

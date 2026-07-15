@@ -271,8 +271,12 @@ def get_analysis(pair_name):
             if cached and time.time() - cached[0] < _ANALYSIS_TTL:
                 return cached[1] + "\n\n🕐 Cached result (< 15 min old)"
         result = _fetch_analysis(pair_name)
-        with _analysis_cache_lock:
-            _analysis_cache[pair_name] = (time.time(), result)
+        # Don't cache error responses — they expire immediately so a retry
+        # can attempt a fresh fetch rather than serving a stale failure for 15 min.
+        _error_responses = {"Pair not found.", "Not enough data.", "Analysis temporarily unavailable. Please try again."}
+        if result not in _error_responses and not result.startswith("AI analysis not available"):
+            with _analysis_cache_lock:
+                _analysis_cache[pair_name] = (time.time(), result)
     return result
 
 def _is_analysis_cached(pair_name):
@@ -334,10 +338,10 @@ def _fetch_analysis(pair_name):
         rsi = (100 - (100 / (1 + gain / loss))).iloc[-1]
         prev_close = close.shift(1)
         true_range = pd.concat([high-low, (high-prev_close).abs(), (low-prev_close).abs()], axis=1).max(axis=1)
-        atr = true_range.rolling(14).mean().iloc[-1]
+        atr = true_range.ewm(com=13, adjust=False).mean().iloc[-1]  # Wilder's EMA matches charting platforms
         price = close.iloc[-1]
         bb_mid = close.rolling(20).mean().iloc[-1]
-        bb_std = close.rolling(20).std().iloc[-1]
+        bb_std = close.rolling(20).std(ddof=0).iloc[-1]  # population std (ddof=0) matches standard Bollinger Band definition
         bb_upper = bb_mid + 2 * bb_std
         bb_lower = bb_mid - 2 * bb_std
         macd_line = close.ewm(span=12).mean() - close.ewm(span=26).mean()
@@ -379,7 +383,7 @@ def _fetch_analysis(pair_name):
             return "Analysis temporarily unavailable. Please try again."
         return pair_name+" | "+now+"\n\n"+message.content[0].text
     except Exception as e:
-        print(f"get_analysis error ({pair_name}): {e}")
+        print(f"_fetch_analysis error ({pair_name}): {e}")
         return "Analysis temporarily unavailable. Please try again."
 
 def get_sentiment():
@@ -525,7 +529,8 @@ def handle_message(chat_id, text, username, first_name=""):
             tz = pytz.timezone("Europe/Athens")
             today = datetime.now(tz).strftime("%Y-%m-%d")
             now_str = datetime.now(tz).strftime("%d/%m/%Y")
-            h = {"User-Agent":"Mozilla/5.0","X-Requested-With":"XMLHttpRequest","Referer":"https://www.investing.com/economic-calendar/"}
+            # Full browser UA required — bare "Mozilla/5.0" is flagged by investing.com's bot detection
+            h = {"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36","X-Requested-With":"XMLHttpRequest","Referer":"https://www.investing.com/economic-calendar/","Origin":"https://www.investing.com","Accept":"*/*","Accept-Language":"en-US,en;q=0.9"}
             d = {"dateFrom":today,"dateTo":today,"importance[]":["2","3"]}
             r = requests.post("https://www.investing.com/economic-calendar/Service/getCalendarFilteredData",headers=h,data=d,timeout=15)
             r.raise_for_status()
@@ -539,8 +544,9 @@ def handle_message(chat_id, text, username, first_name=""):
                     ev_time = tds[0].text.strip()
                     currency = tds[1].text.strip()
                     ev_name = tds[3].text.strip() if len(tds)>3 else ""
-                    forecast = tds[4].text.strip() if len(tds)>4 else ""
-                    previous = tds[5].text.strip() if len(tds)>5 else ""
+                    # Column order: 0=Time, 1=Currency, 2=Impact, 3=Event, 4=Actual, 5=Forecast, 6=Previous
+                    forecast = tds[5].text.strip() if len(tds)>5 else ""
+                    previous = tds[6].text.strip() if len(tds)>6 else ""
                     if currency in ["USD","EUR","GBP","JPY","CHF","AUD","CAD","NZD"]:
                         line = ev_time+" | "+currency+" | "+ev_name
                         if forecast: line += " F:"+forecast
@@ -607,6 +613,8 @@ def handle_message(chat_id, text, username, first_name=""):
                 system=style,
                 messages=[{"role":"user","content":"Headlines:\n\n"+news_text}]
             )
+            if not message.content:
+                raise ValueError("Anthropic returned empty content list")
             send_message(chat_id, random.choice(headers)+"\n🕔 "+now_str+"\n\n"+message.content[0].text+"\n\n📰 Full coverage: @tradingNovaNews", main_menu())
         except Exception as e:
             print(f"News handler error: {e}")
@@ -633,7 +641,9 @@ def handle_message(chat_id, text, username, first_name=""):
 
     elif any(emoji in text for emoji in ["🇪🇺","🇬🇧","🪙","🟡","🔵","⛽","🇺🇸","🇦🇺","🥈","🟠","🇯🇵","🇳🇿","🇨🇦"]):
         for k, v in ALIASES.items():
-            if k in text_lower or v.lower() in text_lower:
+            # Use word-boundary matching to prevent short keys like "eur", "sol", "oil"
+            # from matching substrings of unrelated words (e.g. "sol" in "absolute").
+            if re.search(r'\b' + re.escape(k) + r'\b', text_lower) or re.search(r'\b' + re.escape(v.lower()) + r'\b', text_lower):
                 if not _is_analysis_cached(v):
                     send_message(chat_id, "🔎 Analyzing " + v + " — pulling live data, one moment...")
                 send_message(chat_id, _get_analysis_with_typing(chat_id, v), main_menu())
@@ -906,7 +916,7 @@ def handle_message(chat_id, text, username, first_name=""):
                 if closed_trades:
                     wins = sum(1 for t in closed_trades if t["result"] == "WIN")
                     losses = sum(1 for t in closed_trades if t["result"] == "LOSS")
-                    total_pips = round(sum(t["pips"] for t in closed_trades), 1)
+                    total_pips = round(sum(t.get("pips", 0) for t in closed_trades), 1)
                     lines_mt.append("\n📊 History: " + str(wins) + "W / " + str(losses) + "L | " + str(total_pips) + " pips total")
                     for t in closed_trades[-5:]:
                         e = "🟢" if t["result"] == "WIN" else ("🟡" if t["result"] == "BE" else "🔴")
@@ -998,7 +1008,7 @@ def handle_message(chat_id, text, username, first_name=""):
                     return
                 lines_j = ["📓 TRADE JOURNAL\n"]
                 for entry in entries[-5:]:
-                    result_emoji = "🟢" if entry.get("result","") == "WIN" else "🔴"
+                    result_emoji = "🟢" if entry.get("result","") == "WIN" else ("🟡" if entry.get("result","") == "BE" else "🔴")
                     lines_j.append(result_emoji+" "+entry.get("pair","?")+" "+entry.get("side","?")+" | "+entry.get("result","")+" "+str(entry.get("pips",""))+"\n   "+entry.get("note",""))
                 send_message(chat_id, "\n".join(lines_j), main_menu())
         except Exception as e:

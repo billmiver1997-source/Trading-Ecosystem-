@@ -183,7 +183,9 @@ def _fetch_calendar_today():
         tz2 = pytz.timezone("Europe/Athens")
         today = datetime.now(tz2).strftime("%Y-%m-%d")
         now_str = datetime.now(tz2).strftime("%d/%m/%Y")
-        h = {"User-Agent":"Mozilla/5.0","X-Requested-With":"XMLHttpRequest","Referer":"https://www.investing.com/economic-calendar/"}
+        # Full browser UA required — the truncated form ("Mozilla/5.0" only) is flagged
+        # by investing.com's bot detection and returns 403.
+        h = {"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36","X-Requested-With":"XMLHttpRequest","Referer":"https://www.investing.com/economic-calendar/","Origin":"https://www.investing.com","Accept":"*/*","Accept-Language":"en-US,en;q=0.9"}
         d = {"dateFrom":today,"dateTo":today,"importance[]":["2","3"]}
         r = requests.post("https://www.investing.com/economic-calendar/Service/getCalendarFilteredData",headers=h,data=d,timeout=15)
         r.raise_for_status()

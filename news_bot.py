@@ -259,6 +259,8 @@ def _save_sent_slots(sent_today):
     try:
         with open(tmp, "w") as f:
             json.dump(sent_today, f)
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(tmp, SENT_SLOTS_FILE)
     except Exception as e:
         print(f"save sent slots error: {e}")
@@ -414,6 +416,10 @@ def main():
                             _save_sent_slots(sent_today)
                         else:
                             print(f"send_photo_channel failed for {send_key}, slot not marked — will retry")
+                            # Short sleep so we stay inside the 10-minute send window
+                            # and the loop can retry; 600s would push us past minute<10.
+                            time.sleep(60)
+                            continue
                 time.sleep(600)
                 continue
 

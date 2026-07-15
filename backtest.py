@@ -40,6 +40,8 @@ def _save_sent_week(week):
     try:
         with open(tmp, "w") as f:
             json.dump({"week": week}, f)
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(tmp, SENT_STATE_FILE)
     except Exception as e:
         print(f"save sent state error: {e}")

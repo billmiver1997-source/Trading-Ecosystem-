@@ -125,13 +125,24 @@ def make_signal_chart(name, symbol, bias, entry, sl, tp, zone_low=None, zone_hig
     df = _fetch(symbol, period="7d")
     if df is None or len(df) < 30:
         return None
-    df = df.iloc[-70:]
 
-    close = df["Close"]
+    # Compute EMAs on the full dataset before slicing for display — EMA200 needs
+    # several hundred bars to converge; computing it on only 70 bars produces a
+    # meaningless line. Slice df and the pre-computed series together.
+    close_full = df["Close"]
+    ema20_full  = close_full.ewm(span=20).mean()
+    ema50_full  = close_full.ewm(span=50).mean()
+    ema200_full = close_full.ewm(span=200).mean()
+
+    df    = df.iloc[-70:]
+    ema20  = ema20_full.iloc[-70:]
+    ema50  = ema50_full.iloc[-70:]
+    ema200 = ema200_full.iloc[-70:]
+
     addplots = [
-        mpf.make_addplot(close.ewm(span=20).mean(), color="#2962ff", width=1.0),
-        mpf.make_addplot(close.ewm(span=50).mean(), color="#ff6d00", width=1.0),
-        mpf.make_addplot(close.ewm(span=200).mean(), color="#9e9e9e", width=1.0),
+        mpf.make_addplot(ema20,  color="#2962ff", width=1.0),
+        mpf.make_addplot(ema50,  color="#ff6d00", width=1.0),
+        mpf.make_addplot(ema200, color="#9e9e9e", width=1.0),
     ]
 
     support, resistance = _nearest_sr(df, entry)
@@ -169,14 +180,23 @@ def make_result_chart(name, symbol, signal, entry, sl, tp, entry_time, result_la
     # Pad a few candles before entry for context, keep everything after through to now
     idx_pos = int((df.index <= entry_dt).sum())
     start = max(0, idx_pos - 10)
+
+    # Compute EMAs on the full dataset before slicing — a short slice after entry
+    # gives too few bars for EMA50 to converge meaningfully.
+    close_full = df["Close"]
+    ema20_full = close_full.ewm(span=20).mean()
+    ema50_full = close_full.ewm(span=50).mean()
+
     df = df.iloc[start:]
     if len(df) < 3:
         return None
 
-    close = df["Close"]
+    ema20 = ema20_full.iloc[start:]
+    ema50 = ema50_full.iloc[start:]
+
     addplots = [
-        mpf.make_addplot(close.ewm(span=20).mean(), color="#2962ff", width=1.0),
-        mpf.make_addplot(close.ewm(span=50).mean(), color="#ff6d00", width=1.0),
+        mpf.make_addplot(ema20, color="#2962ff", width=1.0),
+        mpf.make_addplot(ema50, color="#ff6d00", width=1.0),
     ]
 
     support, resistance = _nearest_sr(df, entry)
