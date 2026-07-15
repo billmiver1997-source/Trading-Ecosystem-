@@ -33,6 +33,8 @@ def _save_sent_day(day):
     try:
         with open(tmp, "w") as f:
             json.dump({"day": day}, f)
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(tmp, SENT_STATE_FILE)
     except Exception as e:
         print(f"save sent state error: {e}")

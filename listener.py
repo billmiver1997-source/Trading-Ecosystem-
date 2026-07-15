@@ -41,6 +41,13 @@ _qa_cooldown = 30     # seconds between free-form Q&A calls per user
 _qa_lock = Lock()     # guards check-and-set of _qa_last_time under 20-worker executor
 _AI_MODEL = "claude-haiku-4-5-20251001"
 
+def _yf_history(ticker_sym, **kwargs):
+    """yfinance wrapper with a 20-second hard timeout to prevent worker thread starvation."""
+    from concurrent.futures import ThreadPoolExecutor as _TPool
+    with _TPool(max_workers=1) as _ex:
+        fut = _ex.submit(yf.Ticker(ticker_sym).history, **kwargs)
+        return fut.result(timeout=20)
+
 def _get_anthropic():
     global _anthropic_client
     if not ANTHROPIC_API_KEY:
@@ -218,7 +225,7 @@ def main_menu():
             [{"text": "🧮 Risk Calculator"}, {"text": "💥 Volatility Alert"}],
             [{"text": "💼 Portfolio"}, {"text": "📓 Trade Journal"}],
             [{"text": "📝 My Trades"}, {"text": "📜 Signal History"}],
-            [{"text": "📍 S&R Levels"}],
+            [{"text": "📍 S&R Levels"}, {"text": "🌍 News"}],
         ],
         "resize_keyboard": True,
         "one_time_keyboard": False,
@@ -306,15 +313,18 @@ def _prewarm_analysis_cache():
     request almost always resolves from cache (near-instant) instead of
     triggering a fresh ~6-13s data-fetch + AI call. get_analysis() already
     skips the actual work when the cache is still fresh, so most ticks here
-    are cheap no-ops — real work happens roughly once per pair per TTL window."""
+    are cheap no-ops — real work happens roughly once per pair per TTL window.
+    Pairs are fetched in parallel (up to 6 at once) to cut cold-start time from
+    ~170 s (serial) to ~30 s (parallel)."""
     while True:
-        for pair_name in SYMBOLS:
-            if pair_name == "DXY":
-                continue
-            try:
-                get_analysis(pair_name)
-            except Exception as e:
-                print(f"prewarm_analysis error ({pair_name}): {e}")
+        pairs = [p for p in SYMBOLS if p != "DXY"]
+        with ThreadPoolExecutor(max_workers=6) as ex:
+            futures = {ex.submit(get_analysis, p): p for p in pairs}
+            for fut in futures:
+                try:
+                    fut.result()
+                except Exception as e:
+                    print(f"prewarm_analysis error ({futures[fut]}): {e}")
         time.sleep(300)  # 5 min — well under the 15-min TTL, keeps the staleness window small
 
 def _fetch_analysis(pair_name):
@@ -322,7 +332,7 @@ def _fetch_analysis(pair_name):
     if not symbol:
         return "Pair not found."
     try:
-        df = yf.Ticker(symbol).history(period="5d", interval="15m")
+        df = _yf_history(symbol, period="5d", interval="15m")
         if len(df) < 50:
             return "Not enough data."
         close = df["Close"]
@@ -352,7 +362,7 @@ def _fetch_analysis(pair_name):
         client = _get_anthropic()
         if not client:
             return "AI analysis not available (API key not configured)."
-        system_prompt = "You are a professional forex and commodities analyst. Respond in plain text only — no markdown, no asterisks. Always include a specific numeric ENTRY, SL, and TP. Use emojis sparingly."
+        system_prompt = "You are a professional forex and commodities analyst. Respond in plain text only — no markdown, no asterisks, no bullet points, no numbered lists, no dashes as list markers. Always include a specific numeric ENTRY, SL, and TP. Use emojis sparingly."
         analysis_styles = [
             "Give a complete analysis of {pair} on the 15-minute timeframe. Cover: market bias, key levels, momentum, and a clear trade idea (BUY/SELL/WAIT) with entry, SL, and TP. Be direct and specific.",
             "Review {pair} live. Start with what the chart is telling you right now. Then: is there a trade here? If yes — entry, SL, TP and why. If no — what to wait for. Write like you're talking to a fellow trader.",
@@ -360,11 +370,16 @@ def _fetch_analysis(pair_name):
             "Analyze {pair} and give your honest read: trend, momentum, key zone to watch. Then one clear recommendation: BUY / SELL / WAIT — with levels and reasoning. Don't hedge. Be direct.",
         ]
         style = random.choice(analysis_styles).format(pair=pair_name)
+        _inst_type = ("Crypto" if pair_name in ("BTC/USD", "SOL/USD")
+                      else "Commodity" if pair_name in ("XAU/USD", "Silver/USD", "Copper/USD", "Oil/USD")
+                      else "Forex Index" if pair_name == "DXY"
+                      else "Forex pair")
         data_context = (
-            "\n\nLive data (15m timeframe, 5-day window):\n"
+            "\n\nInstrument: "+pair_name+" ("+_inst_type+")\n"
+            "Live data (15m timeframe, 5-day window):\n"
             "Price: "+str(round(price,5))+"\n"
             "EMA20: "+str(round(ema20,5))+" | EMA50: "+str(round(ema50,5))+"\n"
-            "RSI: "+str(round(rsi,1))+" | MACD: "+str(round(macd,5))+" | Signal: "+str(round(macd_sig,5))+"\n"
+            "RSI: "+str(round(rsi,1))+" | MACD: "+str(round(macd,5))+" | Signal: "+str(round(macd_sig,5))+" | Histogram: "+str(round(macd - macd_sig,5))+"\n"
             "ATR: "+str(round(atr,5))+" ("+str(atr_pct)+"% of price)\n"
             "Bollinger Bands: "+str(round(bb_lower,5))+" / "+str(round(bb_upper,5))+"\n"
             "5D High: "+str(round(high.max(),5))+" | 5D Low: "+str(round(low.min(),5))
@@ -444,6 +459,7 @@ def set_commands():
         r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/setMyCommands", timeout=10, json={
             "commands": [
                 {"command": "start", "description": "Start & main menu"},
+                {"command": "menu", "description": "Show main menu"},
                 {"command": "analysis", "description": "Get analysis: /analysis EURUSD"},
                 {"command": "sentiment", "description": "Market sentiment"},
                 {"command": "status", "description": "Trading status & open trades"},
@@ -579,6 +595,8 @@ def handle_message(chat_id, text, username, first_name=""):
                     _resp = requests.get(feed_url, timeout=10)
                     _resp.raise_for_status()  # treat 4xx/5xx as errors, not empty feeds
                     feed = feedparser.parse(_resp.text)
+                    if feed.bozo:
+                        print(f"feedparser bozo ({feed_url}): {feed.bozo_exception}")
                 except Exception as _feed_err:
                     print(f"feed fetch error {feed_url}: {_feed_err}")
                     continue
@@ -608,7 +626,7 @@ def handle_message(chat_id, text, username, first_name=""):
             headers = ["📰 LATEST NEWS", "📡 MARKET INTELLIGENCE", "🗞 BREAKING MARKET NEWS", "📊 MARKET UPDATE"]
             message = client.messages.create(
                 model=_AI_MODEL,
-                max_tokens=1000,
+                max_tokens=400,
                 timeout=25,  # SDK default is 600s — a user pressing a button shouldn't wait that long
                 system=style,
                 messages=[{"role":"user","content":"Headlines:\n\n"+news_text}]
@@ -702,7 +720,7 @@ def handle_message(chat_id, text, username, first_name=""):
             def _fetch_vol(args):
                 vname, vsymbol = args
                 try:
-                    df = yf.Ticker(vsymbol).history(period="5d", interval="1h")
+                    df = _yf_history(vsymbol, period="5d", interval="1h")
                     if len(df) < 20: return vname, None
                     prev_close = df["Close"].shift(1)
                     tr = pd.concat([df["High"]-df["Low"], (df["High"]-prev_close).abs(), (df["Low"]-prev_close).abs()], axis=1).max(axis=1)
@@ -753,7 +771,7 @@ def handle_message(chat_id, text, username, first_name=""):
                 def _fetch_tf(args):
                     tf, period = args
                     try:
-                        df = yf.Ticker(symbol).history(period=period, interval=tf)
+                        df = _yf_history(symbol, period=period, interval=tf)
                         if len(df) < 50: return tf, None
                         close = df["Close"]
                         ema20 = close.ewm(span=20).mean().iloc[-1]
@@ -825,9 +843,9 @@ def handle_message(chat_id, text, username, first_name=""):
                     symbol = SYMBOLS.get(t["name"], "")
                     if not symbol: return t, None
                     try:
-                        df = yf.Ticker(symbol).history(period="1d", interval="5m")
+                        df = _yf_history(symbol, period="1d", interval="5m")
                         if len(df) == 0:
-                            df = yf.Ticker(symbol).history(period="5d", interval="1h")
+                            df = _yf_history(symbol, period="5d", interval="1h")
                         return t, float(df["Close"].iloc[-1])
                     except Exception as e:
                         print(f"Portfolio P&L error for {t.get('name','?')}: {e}")
@@ -883,9 +901,9 @@ def handle_message(chat_id, text, username, first_name=""):
                         if not symbol:
                             return t, None
                         try:
-                            df = yf.Ticker(symbol).history(period="1d", interval="5m")
+                            df = _yf_history(symbol, period="1d", interval="5m")
                             if len(df) == 0:
-                                df = yf.Ticker(symbol).history(period="5d", interval="1h")
+                                df = _yf_history(symbol, period="5d", interval="1h")
                             return t, float(df["Close"].iloc[-1])
                         except Exception as e:
                             print(f"My Trades P&L error for {t.get('pair','?')}: {e}")
@@ -1195,7 +1213,7 @@ def handle_message(chat_id, text, username, first_name=""):
             def _fetch_sr(args):
                 name, symbol = args
                 try:
-                    df = yf.Ticker(symbol).history(period="30d", interval="1d")
+                    df = _yf_history(symbol, period="30d", interval="1d")
                     if len(df) < 10: return name, None
                     price = df["Close"].iloc[-1]
                     res = sorted([h for h in df["High"].values if h > price])

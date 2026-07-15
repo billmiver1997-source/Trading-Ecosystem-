@@ -36,6 +36,8 @@ def _save_sent_state(sent):
     try:
         with open(tmp, "w") as f:
             json.dump(sent, f)
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(tmp, SENT_STATE_FILE)
     except Exception as e:
         print(f"save sent state error: {e}")
@@ -95,7 +97,7 @@ def _save_cursors():
         print(f"save cursors error: {e}")
 
 def _next_photo(category, pool):
-    idx = _img_cursors.get(category, 0)
+    idx = _img_cursors.get(category, 0) % len(pool)  # guard against stale cursor > pool size
     _img_cursors[category] = (idx + 1) % len(pool)
     _save_cursors()
     return pool[idx]

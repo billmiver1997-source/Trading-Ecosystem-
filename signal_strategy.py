@@ -486,8 +486,10 @@ def main():
                     # Fresh disk read under shared lock to catch signals from a concurrent process
                     with open(LAST_SIGNAL_LOCK_PATH, "a") as _lf:
                         fcntl.flock(_lf, fcntl.LOCK_SH)
-                        current_signals = _load_json(LAST_SIGNAL_FILE, {})
-                        fcntl.flock(_lf, fcntl.LOCK_UN)
+                        try:
+                            current_signals = _load_json(LAST_SIGNAL_FILE, {})
+                        finally:
+                            fcntl.flock(_lf, fcntl.LOCK_UN)
                     if current_signals.get(dedup_key, {}).get("confirm_bar_time") == setup["confirm_bar_time"]:
                         continue  # already signaled this exact confirmation candle
 
