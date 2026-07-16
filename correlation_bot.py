@@ -9,6 +9,7 @@ load_dotenv("/root/tradingbot/.env")
 import json
 import time
 import requests
+from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import pandas as pd
 import yfinance as yf
@@ -25,6 +26,8 @@ if not TELEGRAM_TOKEN or not CHANNEL_ID:
     raise RuntimeError("TELEGRAM_TOKEN_SIGNAL and TELEGRAM_NEWS_CHANNEL must be set in .env")
 
 SENT_STATE_FILE = "/root/tradingbot/sent_state_correlation.json"
+_YF_EXECUTOR = ThreadPoolExecutor(max_workers=4)
+
 
 def _load_sent_day():
     """Persisted (not just in-memory) so a restart inside the send window — e.g.
@@ -72,7 +75,7 @@ def build_correlation_matrix(lookback_days=30):
     closes = {}
     for name, symbol in PAIRS.items():
         try:
-            df = yf.Ticker(symbol).history(period=f"{lookback_days + 10}d", interval="1d")
+            df = _YF_EXECUTOR.submit(yf.Ticker(symbol).history, period=f"{lookback_days + 10}d", interval="1d").result(timeout=20)
             if len(df) < lookback_days // 2:
                 continue
             series = df["Close"].pct_change().dropna()

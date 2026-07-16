@@ -10,6 +10,7 @@ load_dotenv("/root/tradingbot/.env")
 import json
 import time
 import requests
+from concurrent.futures import ThreadPoolExecutor
 import pandas as pd
 import yfinance as yf
 import pytz
@@ -21,6 +22,8 @@ if not TELEGRAM_TOKEN or not CHANNEL_ID:
     raise RuntimeError("TELEGRAM_TOKEN_SIGNAL and TELEGRAM_NEWS_CHANNEL must be set in .env")
 
 SENT_STATE_FILE = "/root/tradingbot/sent_state_regime.json"
+_YF_EXECUTOR = ThreadPoolExecutor(max_workers=4)
+
 
 def _load_sent_day():
     """Persisted (not just in-memory) so a restart inside the send window — e.g.
@@ -128,7 +131,7 @@ def build_report():
     any_data = False
     for name, symbol in PAIRS.items():
         try:
-            df = yf.Ticker(symbol).history(period="6mo", interval="1d")
+            df = _YF_EXECUTOR.submit(yf.Ticker(symbol).history, period="6mo", interval="1d").result(timeout=20)
         except Exception as e:
             print(f"market_regime fetch error {name}: {e}")
             continue

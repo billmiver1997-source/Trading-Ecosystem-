@@ -21,6 +21,7 @@ load_dotenv("/root/tradingbot/.env")
 import json
 import time
 import requests
+from concurrent.futures import ThreadPoolExecutor
 import pandas as pd
 import yfinance as yf
 import pytz
@@ -69,6 +70,8 @@ PAIR_PARAMS = {
     "SOL/USD": {"tol_mult": 1.0, "vol_min_ratio": 0.7},
 }
 
+_YF_EXECUTOR = ThreadPoolExecutor(max_workers=4)
+
 
 def _wilder_smooth(series, period):
     return series.ewm(alpha=1 / period, adjust=False).mean()
@@ -113,9 +116,9 @@ def _save_json(path, data):
 
 def get_data(symbol):
     try:
-        df = yf.Ticker(symbol).history(period="30d", interval="1h")
+        df = _YF_EXECUTOR.submit(yf.Ticker(symbol).history, period="30d", interval="1h").result(timeout=20)
         if len(df) < 210:
-            df = yf.Ticker(symbol).history(period="60d", interval="1h")
+            df = _YF_EXECUTOR.submit(yf.Ticker(symbol).history, period="60d", interval="1h").result(timeout=20)
         if len(df) < 210:
             return None
         return df

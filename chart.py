@@ -9,6 +9,7 @@ import os
 import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="mplfinance")
 from datetime import datetime, timezone
+from concurrent.futures import ThreadPoolExecutor
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -17,6 +18,7 @@ import yfinance as yf
 from PIL import Image, ImageDraw, ImageFont
 
 CHARTS_DIR = os.getenv("CHARTS_DIR", "/root/tradingbot/charts")
+_YF_EXECUTOR = ThreadPoolExecutor(max_workers=4)
 
 _STYLE = mpf.make_mpf_style(
     base_mpf_style="nightclouds",
@@ -34,7 +36,11 @@ SR_COLOR = "#ba68c8"
 
 
 def _fetch(symbol, period="7d"):
-    df = yf.Ticker(symbol).history(period=period, interval="1h")
+    try:
+        df = _YF_EXECUTOR.submit(yf.Ticker(symbol).history, period=period, interval="1h").result(timeout=20)
+    except Exception as e:
+        print(f"chart _fetch timeout/error {symbol}: {e}")
+        return None
     if df is None or df.empty:
         return None
     df = df[["Open", "High", "Low", "Close"]]
@@ -152,6 +158,7 @@ def make_signal_chart(name, symbol, bias, entry, sl, tp, zone_low=None, zone_hig
 
     os.makedirs(CHARTS_DIR, exist_ok=True)
     out_path = os.path.join(CHARTS_DIR, f"signal_{name.replace('/', '')}.png")
+    fig = None
     try:
         fig, axes = mpf.plot(
             df, type="candle", style=_STYLE, addplot=addplots,
@@ -163,6 +170,8 @@ def make_signal_chart(name, symbol, bias, entry, sl, tp, zone_low=None, zone_hig
         return out_path
     except Exception as e:
         print(f"make_signal_chart error {name}: {e}")
+        if fig is not None:
+            plt.close(fig)
         return None
 
 
@@ -209,6 +218,7 @@ def make_result_chart(name, symbol, signal, entry, sl, tp, entry_time, result_la
 
     os.makedirs(CHARTS_DIR, exist_ok=True)
     out_path = os.path.join(CHARTS_DIR, f"result_{name.replace('/', '')}_{int(entry_time)}.png")
+    fig = None
     try:
         fig, axes = mpf.plot(
             df, type="candle", style=_STYLE, addplot=addplots,
@@ -223,6 +233,8 @@ def make_result_chart(name, symbol, signal, entry, sl, tp, entry_time, result_la
         return out_path
     except Exception as e:
         print(f"make_result_chart error {name}: {e}")
+        if fig is not None:
+            plt.close(fig)
         return None
 
 

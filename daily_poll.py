@@ -91,11 +91,10 @@ def send_poll(pair):
 def run_once():
     idx = _load_cursor()
     pair = PAIRS[idx % len(PAIRS)]
-    # Only advance cursor if the poll was actually sent so a failed poll is retried next run
+    # Return new cursor index on success so caller can save it atomically with sent_day
     if send_poll(pair):
-        _save_cursor((idx + 1) % len(PAIRS))
-        return True
-    return False
+        return (idx + 1) % len(PAIRS)
+    return None
 
 
 def main():
@@ -108,10 +107,15 @@ def main():
             today = now.strftime("%Y-%m-%d")
             if now.hour == SEND_HOUR and now.minute < 10 and sent_today != today:
                 print("Sending daily poll...")
-                # Only mark sent if poll was actually delivered; silent failures retry next tick
-                if run_once():
+                new_idx = run_once()
+                if new_idx is not None:
                     sent_today = today
-                    _save_sent_day(today)
+                    # Save cursor and sent_day in one atomic write to prevent a
+                    # restart between two separate saves from sending a duplicate poll.
+                    state = _load_cursor_state()
+                    state["idx"] = new_idx
+                    state["sent_day"] = today
+                    _save_cursor_state(state)
         except Exception as e:
             print(f"Main error: {e}")
         time.sleep(300)

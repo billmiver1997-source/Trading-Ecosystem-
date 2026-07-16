@@ -6,6 +6,7 @@ import json
 import random
 import requests
 import time
+from concurrent.futures import ThreadPoolExecutor
 import anthropic
 import yfinance as yf
 from datetime import datetime
@@ -23,6 +24,8 @@ if not CHANNEL_ID:
     raise RuntimeError("TELEGRAM_NEWS_CHANNEL is not set in environment")
 
 SENT_STATE_FILE = "/root/tradingbot/sent_state_sentiment.json"
+_YF_EXECUTOR = ThreadPoolExecutor(max_workers=4)
+
 
 def _load_sent_day():
     """Persisted (not just in-memory) so a restart inside the send window — e.g.
@@ -97,7 +100,7 @@ def get_fear_greed():
 
 def get_dxy_sentiment():
     try:
-        df = yf.Ticker("DX-Y.NYB").history(period="5d", interval="1h")
+        df = _YF_EXECUTOR.submit(yf.Ticker("DX-Y.NYB").history, period="5d", interval="1h").result(timeout=20)
         if len(df) < 25:
             return None
         change = ((df["Close"].iloc[-1] - df["Close"].iloc[-25]) / df["Close"].iloc[-25]) * 100
@@ -111,7 +114,7 @@ def get_dxy_sentiment():
 
 def get_gold_sentiment():
     try:
-        df = yf.Ticker("GC=F").history(period="5d", interval="1h")
+        df = _YF_EXECUTOR.submit(yf.Ticker("GC=F").history, period="5d", interval="1h").result(timeout=20)
         if len(df) < 25:
             return None
         change = ((df["Close"].iloc[-1] - df["Close"].iloc[-25]) / df["Close"].iloc[-25]) * 100
@@ -125,7 +128,7 @@ def get_gold_sentiment():
 
 def get_vix():
     try:
-        df = yf.Ticker("^VIX").history(period="2d", interval="1h")
+        df = _YF_EXECUTOR.submit(yf.Ticker("^VIX").history, period="2d", interval="1h").result(timeout=20)
         if len(df) < 1:
             return None
         vix = round(df["Close"].iloc[-1], 2)

@@ -8,6 +8,7 @@ import pandas as pd
 import json
 import time
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
 import pytz
 
 try:
@@ -110,13 +111,12 @@ def send_channel_photo(photo_path, caption=""):
                 files={"photo": ("equity.png", pf, "image/png")},
                 data={"chat_id": SIGNALS_CHANNEL, "caption": caption[:1024]}, timeout=20)
         r.raise_for_status()
-    except Exception as e:
-        print(f"send_channel_photo error: {e}")
-    finally:
         try:
             os.remove(photo_path)
         except OSError as e:
             print(f"Failed to delete chart {photo_path}: {e}")
+    except Exception as e:
+        print(f"send_channel_photo error: {e}")
 
 
 def send_all(msg):
@@ -132,6 +132,9 @@ def send_all(msg):
             print(f"send_all error {chat_id}: {e}")
 
 
+_YF_EXECUTOR = ThreadPoolExecutor(max_workers=4)
+
+
 def backtest_pair(name, symbol):
     """HTF trend (EMA50/200) + pullback-to-EMA20 + rejection confirmation — identical
     logic to signal_strategy.find_setup(), so this weekly report tracks the strategy
@@ -139,13 +142,13 @@ def backtest_pair(name, symbol):
     confirmation candle closes — no look-ahead bias. Per-pair tolerance/SL/RR and
     optional ADX/volume filters come from PAIR_PARAMS, mirroring signal_strategy.py."""
     try:
-        df = yf.Ticker(symbol).history(period="90d", interval="1h")
+        df = _YF_EXECUTOR.submit(yf.Ticker(symbol).history, period="90d", interval="1h").result(timeout=20)
     except Exception as e:
         print(f"backtest_pair data error {name}: {e}")
         return None
     if len(df) < 300:
         try:
-            df180 = yf.Ticker(symbol).history(period="180d", interval="1h")
+            df180 = _YF_EXECUTOR.submit(yf.Ticker(symbol).history, period="180d", interval="1h").result(timeout=20)
             # Only upgrade to the wider window if it actually has more bars
             if len(df180) > len(df):
                 df = df180

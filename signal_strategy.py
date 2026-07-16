@@ -9,6 +9,7 @@ import pandas as pd
 import json
 import time
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
 import pytz
 try:
     from bs4 import BeautifulSoup as _BeautifulSoup
@@ -215,11 +216,13 @@ def send_channel_text(msg):
         return False
 
 
+_YF_EXECUTOR = ThreadPoolExecutor(max_workers=4)
+
+
 def get_data(symbol):
     try:
-        ticker = yf.Ticker(symbol)
         # Fetch 60d directly — avoids a wasted 30d call on pairs that routinely need it
-        df = ticker.history(period="60d", interval="1h")
+        df = _YF_EXECUTOR.submit(yf.Ticker(symbol).history, period="60d", interval="1h").result(timeout=20)
         if len(df) < 210:
             return None
         return df

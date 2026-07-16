@@ -8,6 +8,7 @@ import requests
 import json
 import time
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
 import pytz
 
 try:
@@ -204,10 +205,12 @@ def send_result_photo(photo_path, caption, reply_to_message_id=None):
             except OSError as e:
                 print(f"Failed to delete result chart file {photo_path}: {e}")
 
+_YF_EXECUTOR = ThreadPoolExecutor(max_workers=4)
+
+
 def get_price(symbol):
     try:
-        ticker = yf.Ticker(symbol)
-        df = ticker.history(period="1d", interval="1m")
+        df = _YF_EXECUTOR.submit(yf.Ticker(symbol).history, period="1d", interval="1m").result(timeout=20)
         if len(df) > 0:
             return float(df["Close"].iloc[-1])
     except Exception as e:

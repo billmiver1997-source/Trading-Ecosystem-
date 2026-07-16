@@ -63,13 +63,12 @@ def send_channel_photo(photo_path, caption=""):
             )
         r.raise_for_status()
         print("Weekly digest sent!")
-    except Exception as e:
-        print(f"send_channel_photo error: {e}")
-    finally:
         try:
             os.remove(photo_path)
         except OSError as e:
             print(f"Failed to delete chart {photo_path}: {e}")
+    except Exception as e:
+        print(f"send_channel_photo error: {e}")
 
 
 def run_once():
