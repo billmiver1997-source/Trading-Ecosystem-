@@ -169,7 +169,8 @@ def compute_adx(df, period=14):
     plus_di = 100 * _wilder_smooth(plus_dm, period) / atr_w
     minus_di = 100 * _wilder_smooth(minus_dm, period) / atr_w
     denom = (plus_di + minus_di).replace(0, float('nan'))
-    dx = (100 * (plus_di - minus_di).abs() / denom).fillna(0)  # 0 DI sum = no trend, ADX=0
+    # guard inf before fillna: zero-range candles produce inf DX that bypass ADX filters
+    dx = (100 * (plus_di - minus_di).abs() / denom).replace([float('inf'), float('-inf')], float('nan')).fillna(0)
     return _wilder_smooth(dx, period)
 
 
