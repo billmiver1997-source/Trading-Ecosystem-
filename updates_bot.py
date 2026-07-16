@@ -119,8 +119,10 @@ def send(msg, photo_name=None):
                 json={"chat_id": CHANNEL_ID, "text": msg[:4000]}, timeout=10)
         r.raise_for_status()
         print("Sent!")
+        return True
     except Exception as e:
         print("Error: "+str(e))
+        return False
 
 def ai(prompt):
     if _anthropic_client is None:

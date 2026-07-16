@@ -221,8 +221,14 @@ def main():
                     sent_today = today
                     _save_sent_day(today)
                     print("Sentiment sent!")
+                    time.sleep(600)
+                    continue
                 elif not msg:
                     print("Sentiment skipped — no data available")
+                else:
+                    # send failed — retry within the 08:40-08:49 window
+                    time.sleep(60)
+                    continue
 
         except Exception as e:
             print("Error: "+str(e))

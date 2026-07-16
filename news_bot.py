@@ -8,6 +8,7 @@ import re
 import requests
 import time
 import random
+import traceback
 import feedparser
 import anthropic
 from datetime import datetime
@@ -63,7 +64,7 @@ def send_photo_channel(photo_name, caption="", parse_mode=None):
     cap = caption[:1024]
     if isinstance(photo_name, str) and photo_name.startswith("http"):
         try:
-            payload = {"chat_id": CHANNEL_ID, "photo": photo_name, "caption": cap, "disable_web_page_preview": True}
+            payload = {"chat_id": CHANNEL_ID, "photo": photo_name, "caption": cap}
             if parse_mode:
                 payload["parse_mode"] = parse_mode
             r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
@@ -79,7 +80,7 @@ def send_photo_channel(photo_name, caption="", parse_mode=None):
     try:
         fid = _photo_ids.get(photo_name)
         if fid:
-            payload = {"chat_id": CHANNEL_ID, "photo": fid, "caption": cap, "disable_web_page_preview": True}
+            payload = {"chat_id": CHANNEL_ID, "photo": fid, "caption": cap}
             if parse_mode:
                 payload["parse_mode"] = parse_mode
             r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
@@ -96,9 +97,10 @@ def send_photo_channel(photo_name, caption="", parse_mode=None):
                 r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
                     files={"photo": ("image.jpg", pf, "image/jpeg")},
                     data=data, timeout=15)
-            photos = r.json().get("result", {}).get("photo", [])
-            if photos:
-                _photo_ids[photo_name] = photos[-1]["file_id"]
+            if r.ok:
+                photos = r.json().get("result", {}).get("photo", [])
+                if photos:
+                    _photo_ids[photo_name] = photos[-1]["file_id"]
         elif not fid:
             # Fallback: text only (no fid and no image file on disk)
             r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
@@ -360,12 +362,15 @@ def main():
                 if items:
                     report, top_links = create_report(items)
                     if not report:
-                        # AI unavailable — mark slot as used and move on (retry loop is
-                        # outside the 10-minute window after the 600s sleep anyway)
-                        print(f"No AI report for {hour}:00 — marking slot used to prevent silent miss")
+                        # AI unavailable — send fallback link list so channel gets something,
+                        # then mark slot used (retry would fall outside the send window anyway)
+                        print(f"No AI report for {hour}:00 — sending link fallback and marking slot used")
+                        if top_links:
+                            fallback = "\n".join(f"• {t}" for t, _ in top_links)
+                            send_photo_channel(_next_photo("news", NEWS_IMAGES), caption=fallback)
                         sent_today[send_key] = True
                         _save_sent_slots(sent_today)
-                    if report:
+                    else:
                         header = random.choice(SCHEDULE[hour])
                         if top_links:
                             base = _html.escape(header)+"\n🕔 "+_html.escape(now_str)+"\n\n"+_html.escape(report)
@@ -426,7 +431,7 @@ def main():
             time.sleep(300)
 
         except Exception as e:
-            print("Error: "+str(e))
+            traceback.print_exc()
             time.sleep(60)
 
 if __name__ == "__main__":

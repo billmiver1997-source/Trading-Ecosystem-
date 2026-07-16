@@ -179,8 +179,14 @@ def main():
             minute = now.minute
             today = now.strftime("%Y-%m-%d")
             time_str = now.strftime("%H:%M")
-            # Prune stale sent-keys from previous days to prevent indefinite growth
-            sent = {k: v for k, v in sent.items() if k.endswith(today)}
+            # Prune stale sent-keys from previous days; flush pruned result so
+            # the disk file doesn't grow without bound on days with no alerts (e.g. weekends).
+            pruned = {k: v for k, v in sent.items() if k.endswith(today)}
+            if len(pruned) != len(sent):
+                sent = pruned
+                _save_sent_state(sent)
+            else:
+                sent = pruned
 
             for s in SESSIONS:
                 oh, om = s["open"]
@@ -188,7 +194,7 @@ def main():
 
                 # ── OPEN alert (fires at session open time) ──────────────
                 open_key = s["name"] + "_open_" + today
-                if hour == oh and om <= minute < om + 5 and open_key not in sent:
+                if hour == oh and om <= minute < min(om + 5, 60) and open_key not in sent:
                     active = get_active_sessions(hour, minute)
                     active_str = " | ".join(a for a in active if a != s["name"]) or "—"
                     overlap_note = ""
@@ -209,7 +215,7 @@ def main():
 
                 # ── CLOSE alert (fires at session close time) ─────────────
                 close_key = s["name"] + "_close_" + today
-                if hour == ch and cm <= minute < cm + 5 and close_key not in sent:
+                if hour == ch and cm <= minute < min(cm + 5, 60) and close_key not in sent:
                     active = get_active_sessions(hour, minute)
                     still_active = [a for a in active if a != s["name"]]
                     next_str = " | ".join(still_active) if still_active else "Markets quiet until next session"

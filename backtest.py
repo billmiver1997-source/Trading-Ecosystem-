@@ -86,7 +86,8 @@ def compute_adx(df, period=14):
     plus_di = 100 * _wilder_smooth(plus_dm, period) / atr_w
     minus_di = 100 * _wilder_smooth(minus_dm, period) / atr_w
     denom = (plus_di + minus_di).replace(0, float('nan'))
-    dx = (100 * (plus_di - minus_di).abs() / denom).fillna(0)
+    # replace inf before fillna so zero-range candles don't pass the ADX filter as "strongly trending"
+    dx = (100 * (plus_di - minus_di).abs() / denom).replace([float('inf'), float('-inf')], float('nan')).fillna(0)
     return _wilder_smooth(dx, period)
 
 
@@ -155,6 +156,7 @@ def backtest_pair(name, symbol):
         except Exception as e:
             print(f"backtest_pair 180d fallback error {name}: {e}")
     if len(df) < 300:
+        print(f"backtest_pair {name}: insufficient data ({len(df)} bars), skipping")
         return None
 
     params = PAIR_PARAMS.get(name, {"tol_mult": 0.5, "sl_mult": 0.3, "rr": RR})

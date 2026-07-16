@@ -166,8 +166,7 @@ def main():
                 earnings = get_earnings()
                 analysis = get_analysis(earnings)
                 msg = format_message(earnings, analysis)
-                users = load_users()
-                if send_all(msg) > 0 or not users:
+                if send_all(msg) > 0 or not load_users():
                     sent_today = today
                     _save_sent_day(today)
                     print("Earnings sent! "+str(len(earnings))+" companies")

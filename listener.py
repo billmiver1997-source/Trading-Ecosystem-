@@ -43,9 +43,8 @@ _AI_MODEL = "claude-haiku-4-5-20251001"
 
 def _yf_history(ticker_sym, **kwargs):
     """yfinance wrapper with a 20-second hard timeout to prevent worker thread starvation."""
-    from concurrent.futures import ThreadPoolExecutor as _TPool
-    with _TPool(max_workers=1) as _ex:
-        fut = _ex.submit(yf.Ticker(ticker_sym).history, **kwargs)
+    with ThreadPoolExecutor(max_workers=1) as ex:
+        fut = ex.submit(yf.Ticker(ticker_sym).history, **kwargs)
         return fut.result(timeout=20)
 
 def _get_anthropic():
@@ -362,7 +361,7 @@ def _fetch_analysis(pair_name):
         client = _get_anthropic()
         if not client:
             return "AI analysis not available (API key not configured)."
-        system_prompt = "You are a professional forex and commodities analyst. Respond in plain text only — no markdown, no asterisks, no bullet points, no numbered lists, no dashes as list markers. Always include a specific numeric ENTRY, SL, and TP. Use emojis sparingly."
+        system_prompt = "You are a professional forex and commodities analyst. Respond in plain text only — no markdown, no asterisks, no bullet points, no numbered lists, no dashes as list markers. If recommending BUY or SELL, always include a specific numeric ENTRY, SL, and TP. If recommending WAIT, explain specifically what condition to wait for instead of giving levels. Use emojis sparingly."
         analysis_styles = [
             "Give a complete analysis of {pair} on the 15-minute timeframe. Cover: market bias, key levels, momentum, and a clear trade idea (BUY/SELL/WAIT) with entry, SL, and TP. Be direct and specific.",
             "Review {pair} live. Start with what the chart is telling you right now. Then: is there a trade here? If yes — entry, SL, TP and why. If no — what to wait for. Write like you're talking to a fellow trader.",
@@ -772,7 +771,7 @@ def handle_message(chat_id, text, username, first_name=""):
                     tf, period = args
                     try:
                         df = _yf_history(symbol, period=period, interval=tf)
-                        if len(df) < 50: return tf, None
+                        if len(df) < 50: return tf, None, None
                         close = df["Close"]
                         ema20 = close.ewm(span=20).mean().iloc[-1]
                         ema50 = close.ewm(span=50).mean().iloc[-1]

@@ -167,8 +167,10 @@ def send_channel_reply(msg, reply_to_message_id=None):
             r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendMessage",
                 json=payload, timeout=10)
         r.raise_for_status()
+        return True
     except Exception as e:
         print(f"send_channel_reply error: {e}")
+        return False
 
 def send_result_photo(photo_path, caption, reply_to_message_id=None):
     """Send a generated result chart to the signals channel, optionally as a reply.
@@ -442,8 +444,7 @@ def send_daily_stats():
         "\U0001f3af Win Rate: " + str(winrate) + "%\n"
         "\U0001f4b0 Total P&L: " + str(round(stats["total_pips"], 4)) + " pips"
     )
-    send_channel_reply(msg)
-    print("Daily stats sent!")
+    return send_channel_reply(msg)
 
 def main():
     print("Performance tracker started...")
@@ -455,9 +456,10 @@ def main():
             now = datetime.now(tz)
             today = now.strftime("%Y-%m-%d")
             if now.hour == 23 and now.minute >= 50 and last_stats_day != today:
-                send_daily_stats()
-                last_stats_day = today
-                _save_sent_day(today)
+                if send_daily_stats():
+                    print("Daily stats sent!")
+                    last_stats_day = today
+                    _save_sent_day(today)
         except Exception as e:
             import traceback
             traceback.print_exc()
