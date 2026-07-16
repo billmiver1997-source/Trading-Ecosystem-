@@ -154,7 +154,7 @@ def backtest_pair(name, symbol):
                 df = df180
         except Exception as e:
             print(f"backtest_pair 180d fallback error {name}: {e}")
-    if len(df) < 261:
+    if len(df) < 300:
         return None
 
     params = PAIR_PARAMS.get(name, {"tol_mult": 0.5, "sl_mult": 0.3, "rr": RR})

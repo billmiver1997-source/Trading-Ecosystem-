@@ -89,7 +89,7 @@ def send_photo_channel(photo_name, caption="", parse_mode=None):
                 _photo_ids.pop(photo_name, None)
                 fid = None
         if not fid and os.path.exists(path):
-            data = {"chat_id": CHANNEL_ID, "caption": cap, "disable_web_page_preview": "true"}
+            data = {"chat_id": CHANNEL_ID, "caption": cap}
             if parse_mode:
                 data["parse_mode"] = parse_mode
             with open(path, "rb") as pf:

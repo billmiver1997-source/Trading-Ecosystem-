@@ -1185,18 +1185,18 @@ def handle_message(chat_id, text, username, first_name=""):
             tz_athens = pytz.timezone("Europe/Athens")
             sorted_signals = sorted(last_signals.items(), key=lambda x: x[1].get("time", 0))
             for pair_key, data in sorted_signals[-10:]:
-                sig = data.get("signal","")
                 t = data.get("time",0)
                 # Keys are stored as "PAIR_DIRECTION" (e.g. "EUR/USD_BUY") for direction-aware
                 # cooldown; strip the suffix so the display shows just the pair name.
                 if pair_key.endswith("_BUY"):
                     pair = pair_key[:-4]
-                    sig = sig or "BUY"
+                    sig = "BUY"
                 elif pair_key.endswith("_SELL"):
                     pair = pair_key[:-5]
-                    sig = sig or "SELL"
+                    sig = "SELL"
                 else:
                     pair = pair_key  # legacy format — no suffix
+                    sig = ""
                 sig_emoji = "🟢" if sig == "BUY" else "🔴"
                 time_str = datetime.fromtimestamp(t, tz=tz_athens).strftime("%d/%m %H:%M") if t else ""
                 lines_h.append(sig_emoji+" "+pair+" "+sig+" | "+time_str)
