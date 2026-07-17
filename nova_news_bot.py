@@ -109,7 +109,7 @@ def get_news(category):
                         if title not in headlines:
                             headlines.append(title)
                 else:
-                    if any(k in title_lower for k in KEYWORDS[category]):
+                    if any(k in title_lower for k in KEYWORDS.get(category, [])):
                         if title not in headlines:
                             headlines.append(title)
                 if len(headlines) >= 10:
@@ -306,8 +306,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("Error fetching news. Please try again.", reply_markup=MAIN_MENU)
 
     elif text == "📅 Calendar":
-        await update.message.reply_text("🔄 Loading...", reply_markup=MAIN_MENU)
         try:
+            await update.message.reply_text("🔄 Loading...", reply_markup=MAIN_MENU)
             msg = await asyncio.to_thread(_fetch_calendar_today)
             await update.message.reply_text(msg, reply_markup=MAIN_MENU)
         except Exception as e:
@@ -315,8 +315,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("📅 Calendar temporarily unavailable. Please try again.", reply_markup=MAIN_MENU)
 
     elif text == "🧠 Sentiment":
-        await update.message.reply_text("🔄 Loading...", reply_markup=MAIN_MENU)
         try:
+            await update.message.reply_text("🔄 Loading...", reply_markup=MAIN_MENU)
             msg = await asyncio.to_thread(_fetch_sentiment)
             await update.message.reply_text(msg, reply_markup=MAIN_MENU)
         except Exception as e:

@@ -175,7 +175,7 @@ def find_developing_setup(df, name, dxy_bull=None, dxy_bear=None):
     bear_trend = ema50.iloc[-1] < ema200.iloc[-1]
     near_ema20 = abs(price - ema20.iloc[-1]) <= tol
 
-    if dxy_filter and dxy_bull is not None and dxy_bear is not None and len(dxy_bull) and len(dxy_bear):
+    if dxy_filter and dxy_bull is not None and dxy_bear is not None and not dxy_bull.empty and not dxy_bear.empty:
         # Metals inverse-correlation: only flag a bullish metal watch while DXY
         # itself is bearish, and vice versa — a gold BUY read that agrees with a
         # simultaneous dollar-bullish read is the exact conflict the filter exists for.

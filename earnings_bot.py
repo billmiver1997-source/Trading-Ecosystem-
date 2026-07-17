@@ -153,6 +153,9 @@ def format_message(earnings, analysis):
 def main():
     print("Earnings bot started...")
     sent_today = _load_sent_day()
+    # Cache the precomputed message so API calls (Alpha Vantage + Anthropic) only run
+    # once per day even when send_all() fails and we retry within the 7:00-7:09 window.
+    _day_msg_cache = {}
     while True:
         try:
             tz = pytz.timezone("Europe/Athens")
@@ -163,13 +166,15 @@ def main():
 
             if hour == 7 and minute < 10 and sent_today != today:
                 print("Sending earnings calendar...")
-                earnings = get_earnings()
-                analysis = get_analysis(earnings)
-                msg = format_message(earnings, analysis)
+                if today not in _day_msg_cache:
+                    earnings = get_earnings()
+                    analysis = get_analysis(earnings)
+                    _day_msg_cache = {today: (format_message(earnings, analysis), len(earnings))}
+                msg, earnings_count = _day_msg_cache[today]
                 if send_all(msg) > 0:
                     sent_today = today
                     _save_sent_day(today)
-                    print("Earnings sent! "+str(len(earnings))+" companies")
+                    print("Earnings sent! "+str(earnings_count)+" companies")
                     time.sleep(600)
                 else:
                     # send failed — retry within the 7:00-7:09 window

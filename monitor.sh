@@ -1,5 +1,5 @@
 #!/bin/bash
-source /root/tradingbot/.env
+source /root/tradingbot/.env || { echo "FATAL: cannot source .env — Telegram alerts cannot be sent" >&2; exit 1; }
 
 SERVICES=(
     "tradingbot"

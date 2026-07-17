@@ -299,7 +299,7 @@ def create_report(items):
     if not items:
         return None, []
     titles = [t for t, u, img in items]
-    top_links = [(t, u) for t, u, img in items[:6] if u][:4]
+    top_links = [(t, u) for t, u, img in items if u][:4]
     if not _anthropic_client:
         print("create_report: ANTHROPIC_API_KEY not set, skipping AI summary")
         return None, top_links
@@ -362,14 +362,18 @@ def main():
                 if items:
                     report, top_links = create_report(items)
                     if not report:
-                        # AI unavailable — send fallback link list so channel gets something,
-                        # then mark slot used (retry would fall outside the send window anyway)
-                        print(f"No AI report for {hour}:00 — sending link fallback and marking slot used")
+                        # AI unavailable — send fallback link list so channel gets something
+                        print(f"No AI report for {hour}:00 — sending link fallback")
                         if top_links:
                             fallback = "\n".join(f"• {t}" for t, _ in top_links)
-                            send_photo_channel(_next_photo("news", NEWS_IMAGES), caption=fallback)
-                        sent_today[send_key] = True
-                        _save_sent_slots(sent_today)
+                            if send_photo_channel(_next_photo("news", NEWS_IMAGES), caption=fallback):
+                                sent_today[send_key] = True
+                                _save_sent_slots(sent_today)
+                            else:
+                                print(f"Fallback send FAILED for {send_key} — slot not marked, will retry if window allows")
+                        else:
+                            sent_today[send_key] = True  # nothing to send, mark used
+                            _save_sent_slots(sent_today)
                     else:
                         header = random.choice(SCHEDULE[hour])
                         if top_links:
@@ -412,7 +416,8 @@ def main():
                         if send_photo_channel(photo, caption=msg, parse_mode=parse_mode):
                             print(f"Sent {hour}:00 update!")
                             now_t = time.time()
-                            for it in items:
+                            # Only mark the top 10 actually published; items 11-40 may be newsworthy at later slots
+                            for it in items[:10]:
                                 seen[it[0]] = now_t
                             # Prune anything older than 2x the TTL so the file doesn't grow forever
                             seen = {k: v for k, v in seen.items() if now_t - v < SEEN_TTL_HOURS * 3600 * 2}

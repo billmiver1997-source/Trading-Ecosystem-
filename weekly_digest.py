@@ -53,7 +53,8 @@ def _save_sent_week(week):
 
 def send_channel_photo(photo_path, caption=""):
     if not photo_path or not os.path.exists(photo_path):
-        return
+        print(f"send_channel_photo: file missing or None: {photo_path!r}")
+        return False
     try:
         with open(photo_path, "rb") as pf:
             r = requests.post(
@@ -67,29 +68,35 @@ def send_channel_photo(photo_path, caption=""):
             os.remove(photo_path)
         except OSError as e:
             print(f"Failed to delete chart {photo_path}: {e}")
+        return True
     except Exception as e:
         print(f"send_channel_photo error: {e}")
+        return False
 
 
 def run_once():
     if chart is None:
         print("weekly_digest: chart module unavailable, skipping")
-        return
+        return False
     try:
         with open(JOURNAL_FILE) as f:
             entries = json.load(f)
     except (json.JSONDecodeError, ValueError, OSError, FileNotFoundError) as e:
         print(f"journal load error: {e}")
-        return
+        return False
 
     cutoff = time.time() - 7 * 86400
     week_entries = [e for e in entries if e.get("close_time", 0) >= cutoff]
     if not week_entries:
         print("No trades closed this week — skipping digest")
-        return
+        return False
 
-    path = chart.make_weekly_collage(week_entries)
-    send_channel_photo(path, caption="\U0001f4d3 WEEKLY TRADE DIGEST — every trade closed this week")
+    try:
+        path = chart.make_weekly_collage(week_entries)
+    except Exception as e:
+        print(f"weekly_digest: chart generation failed: {e}")
+        return False
+    return send_channel_photo(path, caption="\U0001f4d3 WEEKLY TRADE DIGEST — every trade closed this week")
 
 
 def main():
@@ -101,10 +108,10 @@ def main():
             now = datetime.now(tz)
             week = now.strftime("%Y-%W")
             if now.weekday() == 6 and now.hour == SEND_HOUR and now.minute < 10 and sent_this_week != week:
-                sent_this_week = week
-                _save_sent_week(week)
                 print("Running weekly digest...")
-                run_once()
+                if run_once():
+                    sent_this_week = week
+                    _save_sent_week(week)
         except Exception as e:
             print(f"Main error: {e}")
         time.sleep(300)

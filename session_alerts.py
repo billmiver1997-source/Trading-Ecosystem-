@@ -194,7 +194,7 @@ def main():
 
                 # ── OPEN alert (fires at session open time) ──────────────
                 open_key = s["name"] + "_open_" + today
-                if hour == oh and om <= minute < min(om + 5, 59) and open_key not in sent:
+                if hour == oh and om <= minute < min(om + 5, 60) and open_key not in sent:
                     active = get_active_sessions(hour, minute)
                     active_str = " | ".join(a for a in active if a != s["name"]) or "—"
                     overlap_note = ""
@@ -204,6 +204,7 @@ def main():
                         s["emoji"] + " " + s["name"].upper() + " SESSION OPEN\n\n"
                         "\U0001f552 " + time_str + " Athens\n\n"
                         "\U0001f4b1 Watch: " + s["pairs"] + "\n\n"
+                        "Other active: " + active_str + "\n\n"
                         + s["note"]
                         + overlap_note
                     )
@@ -215,7 +216,7 @@ def main():
 
                 # ── CLOSE alert (fires at session close time) ─────────────
                 close_key = s["name"] + "_close_" + today
-                if hour == ch and cm <= minute < min(cm + 5, 59) and close_key not in sent:
+                if hour == ch and cm <= minute < min(cm + 5, 60) and close_key not in sent:
                     active = get_active_sessions(hour, minute)
                     still_active = [a for a in active if a != s["name"]]
                     next_str = " | ".join(still_active) if still_active else "Markets quiet until next session"

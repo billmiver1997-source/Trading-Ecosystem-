@@ -177,7 +177,7 @@ def backtest_pair(name, symbol):
     total_R = 0.0
     n = len(df)
 
-    for i in range(200, n - 60):
+    for i in range(200, n - 1):
         a = atr.iloc[i]
         if pd.isna(a) or a == 0:
             continue
@@ -292,7 +292,7 @@ def run_backtest():
     overall_R = sum(r["total_R"] for r in results)
 
     lines = ["📊 WEEKLY BACKTEST REPORT\n🕔 " + now + " | Last 90 days\n"]
-    r_sign = "+" if overall_R >= 0 else ""
+    r_sign = "+" if overall_R > 0 else ""
     lines.append("📈 Overall Win Rate: " + str(overall_wr) + "%")
     lines.append("✅ " + str(total_w) + "W  ❌ " + str(total_l) + "L  ⏳ " + str(total_t) + "T  ❓ " + str(total_a) + "A")
     lines.append("💰 Net R: " + r_sign + str(round(overall_R, 2)) + "R\n")

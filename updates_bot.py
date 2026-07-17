@@ -209,7 +209,7 @@ def weekly_summary():
     headers = ["📈 WEEKLY WRAP-UP", "📋 WEEK IN REVIEW", "🏁 FRIDAY WRAP", "📊 THIS WEEK SUMMARY"]
     text = ai(random.choice(prompts))
     if text:
-        send(random.choice(headers)+"\n\n"+text+"\n\n📊 @novasignalschannel1", photo_name=_next_photo("weekly", WEEKLY_IMAGES))
+        send(random.choice(headers)+"\n\n"+text+"\n\n📊 @novasignalschannel1", photo_name=_next_photo("weekly_summary", WEEKLY_IMAGES))
     else:
         print("weekly_summary: AI returned empty — post skipped")
 

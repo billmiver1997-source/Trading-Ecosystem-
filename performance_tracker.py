@@ -299,7 +299,7 @@ def _check_trades_inner(price_cache):
                 be_msg = (
                     f"\U0001f6e1 BREAKEVEN SET\n\n{emoji} {name}\n"
                     f"⏱ Open for: {dur}\n"
-                    f"Entry: {round(entry,5)}  ➡️  Current: {round(price,5)}\n"
+                    f"Entry: {round(entry,5)}  ➡️  Current: {round(close_px,5)}\n"
                     f"SL moved to entry — risk = 0 ✅"
                 )
                 try:
@@ -316,7 +316,7 @@ def _check_trades_inner(price_cache):
                 be_msg = (
                     f"\U0001f6e1 BREAKEVEN SET\n\n{emoji} {name}\n"
                     f"⏱ Open for: {dur}\n"
-                    f"Entry: {round(entry,5)}  ➡️  Current: {round(price,5)}\n"
+                    f"Entry: {round(entry,5)}  ➡️  Current: {round(close_px,5)}\n"
                     f"SL moved to entry — risk = 0 ✅"
                 )
                 try:

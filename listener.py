@@ -43,9 +43,14 @@ _AI_MODEL = "claude-haiku-4-5-20251001"
 
 def _yf_history(ticker_sym, **kwargs):
     """yfinance wrapper with a 20-second hard timeout to prevent worker thread starvation."""
-    with ThreadPoolExecutor(max_workers=1) as ex:
+    # Must NOT use `with` context manager: on timeout, __exit__ calls shutdown(wait=True)
+    # which blocks until the zombie yfinance thread finishes — defeating the timeout entirely.
+    ex = ThreadPoolExecutor(max_workers=1)
+    try:
         fut = ex.submit(yf.Ticker(ticker_sym).history, **kwargs)
         return fut.result(timeout=20)
+    finally:
+        ex.shutdown(wait=False)
 
 def _get_anthropic():
     global _anthropic_client
@@ -337,8 +342,9 @@ def _fetch_analysis(pair_name):
         close = df["Close"]
         high = df["High"]
         low = df["Low"]
-        ema20 = close.ewm(span=20).mean().iloc[-1]
-        ema50 = close.ewm(span=50).mean().iloc[-1]
+        # adjust=False matches the recursive EMA formula used by MT4/TradingView
+        ema20 = close.ewm(span=20, adjust=False).mean().iloc[-1]
+        ema50 = close.ewm(span=50, adjust=False).mean().iloc[-1]
         delta = close.diff()
         # Wilder's EMA (com=13) matches charting platforms; simple rolling() diverges in trends
         gain = delta.clip(lower=0).ewm(com=13, adjust=False).mean()
@@ -353,9 +359,9 @@ def _fetch_analysis(pair_name):
         bb_std = close.rolling(20).std(ddof=0).iloc[-1]  # population std (ddof=0) matches standard Bollinger Band definition
         bb_upper = bb_mid + 2 * bb_std
         bb_lower = bb_mid - 2 * bb_std
-        macd_line = close.ewm(span=12).mean() - close.ewm(span=26).mean()
+        macd_line = close.ewm(span=12, adjust=False).mean() - close.ewm(span=26, adjust=False).mean()
         macd = macd_line.iloc[-1]
-        macd_sig = macd_line.ewm(span=9).mean().iloc[-1]
+        macd_sig = macd_line.ewm(span=9, adjust=False).mean().iloc[-1]
         atr_pct = round((atr / price) * 100, 3)
 
         client = _get_anthropic()
@@ -380,7 +386,7 @@ def _fetch_analysis(pair_name):
             "EMA20: "+str(round(ema20,5))+" | EMA50: "+str(round(ema50,5))+"\n"
             "RSI: "+str(round(rsi,1))+" | MACD: "+str(round(macd,5))+" | Signal: "+str(round(macd_sig,5))+" | Histogram: "+str(round(macd - macd_sig,5))+"\n"
             "ATR: "+str(round(atr,5))+" ("+str(atr_pct)+"% of price)\n"
-            "Bollinger Bands: "+str(round(bb_lower,5))+" / "+str(round(bb_upper,5))+"\n"
+            "Bollinger Bands: Lower "+str(round(bb_lower,5))+" | Mid "+str(round(bb_mid,5))+" | Upper "+str(round(bb_upper,5))+"\n"
             "5D High: "+str(round(high.max(),5))+" | 5D Low: "+str(round(low.min(),5))
         )
         prompt = style + data_context
@@ -1046,7 +1052,10 @@ def handle_message(chat_id, text, username, first_name=""):
             if side not in ("BUY", "SELL"):
                 send_message(chat_id, "❌ Invalid side '" + side + "'. Use BUY or SELL.\nFormat:\nJOURNAL: EURUSD BUY WIN +50pips Good entry at support", main_menu())
                 return
-            result = parts[2]
+            result = parts[2].upper()
+            if result not in ("WIN", "LOSS", "BE"):
+                send_message(chat_id, "❌ Result must be WIN, LOSS, or BE.\nFormat:\nJOURNAL: EURUSD BUY WIN +50pips note", main_menu())
+                return
             pips_match = re.search(r"[-+]?\d+(\.\d+)?", parts[3]) if len(parts) > 3 else None
             pips_val = float(pips_match.group()) if pips_match else 0.0
             note = " ".join(parts[4:]).lower() if len(parts) > 4 else ""

@@ -99,7 +99,7 @@ def classify_regime(df):
     width_now = bb_width.iloc[-1]
     if pd.isna(width_now):
         return None
-    width_percentile = (bb_width.iloc[-100:] < width_now).mean() if len(bb_width) >= 100 else 0.5
+    width_percentile = (bb_width.iloc[-101:-1] < width_now).mean() if len(bb_width) >= 101 else 0.5
 
     adx_now = adx.iloc[-1]
     bullish = plus_di.iloc[-1] > minus_di.iloc[-1]

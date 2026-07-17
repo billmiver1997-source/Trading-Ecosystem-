@@ -339,12 +339,12 @@ def format_setup(name, setup):
         "\U0001f3af TRADING SETUP — " + name + "\n\n"
         + emoji + "  " + now + "  |  " + session + "\n"
         + bias_emoji + " " + setup["bias"] + "  |  " + action + " now\n\n"
-        "\U0001f4cd Entry: " + str(round(setup["price"], 5)) + "\n"
-        "\U0001f6d1 SL: " + str(setup["sl"]) + "   ✅ TP: " + str(setup["tp"]) + "\n"
-        "\U0001f4d0 R:R = 1:" + str(rr_ratio) + "\n\n"
-        "⚡ " + setup["reason"] + "\n\n"
-        "Pullback + confirmation | 1H\n"
-        "⚠️ Educational only. Not financial advice."
+        + "\U0001f4cd Entry: " + str(round(setup["price"], 5)) + "\n"
+        + "\U0001f6d1 SL: " + str(setup["sl"]) + "   ✅ TP: " + str(setup["tp"]) + "\n"
+        + "\U0001f4d0 R:R = 1:" + str(rr_ratio) + "\n\n"
+        + "⚡ " + setup["reason"] + "\n\n"
+        + "Pullback + confirmation | 1H\n"
+        + "⚠️ Educational only. Not financial advice."
     )
 
 
