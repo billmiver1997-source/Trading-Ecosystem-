@@ -1,0 +1,12 @@
+[Unit]
+Description=Trading Nova - daily_poll
+After=network.target
+
+[Service]
+ExecStart=/root/tradingbot/bin/python3 -u /root/tradingbot/daily_poll.py
+Restart=always
+RestartSec=10
+WorkingDirectory=/root/tradingbot
+
+[Install]
+WantedBy=multi-user.target

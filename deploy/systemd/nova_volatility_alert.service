@@ -1,0 +1,12 @@
+[Unit]
+Description=Trading Nova - volatility_alert
+After=network.target
+
+[Service]
+ExecStart=/root/tradingbot/bin/python3 -u /root/tradingbot/volatility_alert.py
+Restart=always
+RestartSec=10
+WorkingDirectory=/root/tradingbot
+
+[Install]
+WantedBy=multi-user.target

@@ -5,3 +5,37 @@ __pycache__/
 .env
 *.log
 .claude/
+
+# venv, created fresh by DEPLOY.md step 3 — never committed
+bin/
+lib/
+lib64/
+share/
+pyvenv.cfg
+
+# runtime state/data — lives on the server, not part of the deployable code
+images/
+charts/
+*.json.lock
+users.json
+user_profiles.json
+open_trades.json
+journal.json
+journal_archived_*.json
+last_signals*.json
+trade_stats.json
+trade_stats_archived_*.json
+personal_journal.json
+watchlist_state.json
+volatility_state.json
+watchdog_state.txt
+cursors_*.json
+sent_state_*.json
+sent_news.json
+news_seen.json
+news_sent_slots.json
+session_alerts_sent.json
+calendar_alerts_state.json
+nova_history.json
+last_summary.json
+ib_clients.json

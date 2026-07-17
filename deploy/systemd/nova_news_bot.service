@@ -1,0 +1,12 @@
+[Unit]
+Description=Trading Nova - news_bot
+After=network.target
+
+[Service]
+ExecStart=/root/tradingbot/bin/python3 -u /root/tradingbot/news_bot.py
+Restart=always
+RestartSec=10
+WorkingDirectory=/root/tradingbot
+
+[Install]
+WantedBy=multi-user.target

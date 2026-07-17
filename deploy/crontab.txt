@@ -1,0 +1,6 @@
+# Add these two lines with `crontab -e` on the server.
+# (Don't paste the whole file if the server already has unrelated cron jobs —
+# just add these two.)
+
+*/5 * * * * /root/tradingbot/monitor.sh >> /root/tradingbot/monitor.log 2>&1
+*/10 * * * * cd /root/tradingbot && git pull origin main --quiet
