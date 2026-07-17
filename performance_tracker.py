@@ -97,13 +97,17 @@ def save_trades(trades):
         print(f"save_trades error: {e}")
 
 def load_stats():
+    default = {"wins": 0, "losses": 0, "total_pips": 0.0, "by_pair": {}}
     if os.path.exists(STATS_FILE):
         try:
             with open(STATS_FILE) as f:
-                return json.load(f)
+                data = json.load(f)
+            for k, v in default.items():
+                data.setdefault(k, v)
+            return data
         except (json.JSONDecodeError, ValueError, OSError) as e:
             print(f"load_stats JSON error: {e}")
-    return {"wins": 0, "losses": 0, "total_pips": 0.0, "by_pair": {}}
+    return default
 
 def save_stats(stats):
     tmp = STATS_FILE + '.tmp'

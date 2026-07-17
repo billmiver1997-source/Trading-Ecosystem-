@@ -9,6 +9,7 @@ import json
 import anthropic
 import yfinance as yf
 import pytz
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
@@ -94,6 +95,7 @@ def track_user(user, bot_name="main"):
             return is_new, users[uid]
         finally:
             fcntl.flock(_lf, fcntl.LOCK_UN)
+_YF_EXECUTOR = ThreadPoolExecutor(max_workers=4)
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 # httpx/httpcore log each request URL at INFO, which embeds the bot token
 # (https://api.telegram.org/bot<TOKEN>/...) directly into the system journal.
@@ -175,7 +177,7 @@ def get_market_overview():
     result = ["\U0001f4ca MARKET OVERVIEW\n"]
     for name, symbol in pairs.items():
         try:
-            df = yf.Ticker(symbol).history(period="5d", interval="1h")
+            df = _YF_EXECUTOR.submit(yf.Ticker(symbol).history, period="5d", interval="1h").result(timeout=20)
             if len(df) < 25:  # need at least 24 bars back for the 24h change
                 continue
             price = df["Close"].iloc[-1]

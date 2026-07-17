@@ -22,6 +22,7 @@ if not TELEGRAM_TOKEN or not SIGNALS_CHANNEL:
     raise RuntimeError("TELEGRAM_TOKEN_SIGNAL and SIGNALS_CHANNEL must be set in .env")
 
 STATE_FILE = "/root/tradingbot/volatility_state.json"
+_YF_EXECUTOR = ThreadPoolExecutor(max_workers=4)
 HIGH_THRESHOLD = 150  # % of 5-day average ATR
 SCAN_INTERVAL = 900   # 15 minutes
 
@@ -64,7 +65,7 @@ def _save_state(state):
 def fetch_volatility(args):
     name, symbol = args
     try:
-        df = yf.Ticker(symbol).history(period="5d", interval="1h")
+        df = _YF_EXECUTOR.submit(yf.Ticker(symbol).history, period="5d", interval="1h").result(timeout=20)
         if len(df) < 20:
             return name, None
         prev_close = df["Close"].shift(1)
