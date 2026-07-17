@@ -43,18 +43,6 @@ def _load_sent_day():
     return _load_cursor_state().get("sent_day", "")
 
 
-def _save_cursor(idx):
-    state = _load_cursor_state()
-    state["idx"] = idx
-    _save_cursor_state(state)
-
-
-def _save_sent_day(day):
-    state = _load_cursor_state()
-    state["sent_day"] = day
-    _save_cursor_state(state)
-
-
 def _save_cursor_state(state):
     tmp = CURSOR_FILE + ".tmp"
     try:

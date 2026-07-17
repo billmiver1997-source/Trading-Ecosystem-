@@ -349,6 +349,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "\U0001f4d6 How to Start":
         await update.message.reply_text("\U0001f504 Loading...", reply_markup=edu_menu())
         await update.message.reply_text(await asyncio.to_thread(get_education, "howtostart"), reply_markup=edu_menu())
+    else:
+        await update.message.reply_text("Use the menu buttons below to navigate.", reply_markup=main_menu())
 
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))

@@ -135,6 +135,7 @@ def main():
             today = now.strftime("%Y-%m-%d")
             if today != last_date:
                 state = {}  # fresh dedup state each day
+                _save_state(state)   # persist immediately so a restart doesn't reload stale keys
                 last_date = today
 
             events = get_high_impact_events()

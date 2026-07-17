@@ -127,7 +127,7 @@ def send_photo(photo_name, caption):
                     data={"chat_id": SIGNALS_CHANNEL, "caption": cap},
                     timeout=15,
                 )
-            photos = r.json().get("result", {}).get("photo", [])
+            photos = r.json().get("result", {}).get("photo", []) if r.ok else []
             if photos:
                 _photo_ids[photo_name] = photos[-1]["file_id"]
         elif not fid:
@@ -194,7 +194,7 @@ def main():
 
                 # ── OPEN alert (fires at session open time) ──────────────
                 open_key = s["name"] + "_open_" + today
-                if hour == oh and om <= minute < min(om + 5, 60) and open_key not in sent:
+                if hour == oh and om <= minute < min(om + 5, 59) and open_key not in sent:
                     active = get_active_sessions(hour, minute)
                     active_str = " | ".join(a for a in active if a != s["name"]) or "—"
                     overlap_note = ""
@@ -215,7 +215,7 @@ def main():
 
                 # ── CLOSE alert (fires at session close time) ─────────────
                 close_key = s["name"] + "_close_" + today
-                if hour == ch and cm <= minute < min(cm + 5, 60) and close_key not in sent:
+                if hour == ch and cm <= minute < min(cm + 5, 59) and close_key not in sent:
                     active = get_active_sessions(hour, minute)
                     still_active = [a for a in active if a != s["name"]]
                     next_str = " | ".join(still_active) if still_active else "Markets quiet until next session"

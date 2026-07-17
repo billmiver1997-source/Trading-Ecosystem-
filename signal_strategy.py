@@ -276,6 +276,8 @@ def find_setup(df, name):
             return None
 
     price = open_.iloc[-1]
+    if pd.isna(price) or price <= 0:
+        return None
     confirm_bar_time = df.index[i].isoformat()
 
     bull_trend = ema50.iloc[i] > ema200.iloc[i]

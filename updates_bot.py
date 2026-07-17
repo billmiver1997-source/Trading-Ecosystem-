@@ -111,7 +111,7 @@ def send(msg, photo_name=None):
                     r = requests.post("https://api.telegram.org/bot"+TELEGRAM_TOKEN+"/sendPhoto",
                         files={"photo": ("image.jpg", pf, "image/jpeg")},
                         data={"chat_id": CHANNEL_ID, "caption": cap}, timeout=15)
-                photos = r.json().get("result", {}).get("photo", [])
+                photos = r.json().get("result", {}).get("photo", []) if r.ok else []
                 if photos:
                     _photo_ids[photo_name] = photos[-1]["file_id"]
         else:

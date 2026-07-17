@@ -86,7 +86,7 @@ def get_earnings():
             timeout=15
         )
         # Alpha Vantage returns JSON error bodies (not CSV) when the key is invalid or rate-limited
-        if r.status_code != 200 or not r.text.lstrip().startswith("symbol"):
+        if r.status_code != 200 or not r.text.lstrip().lstrip('﻿').startswith("symbol"):
             print(f"Earnings API unexpected response (status={r.status_code}): {r.text[:200]}")
             return []
         reader = csv.DictReader(io.StringIO(r.text))
@@ -166,7 +166,7 @@ def main():
                 earnings = get_earnings()
                 analysis = get_analysis(earnings)
                 msg = format_message(earnings, analysis)
-                if send_all(msg) > 0 or not load_users():
+                if send_all(msg) > 0:
                     sent_today = today
                     _save_sent_day(today)
                     print("Earnings sent! "+str(len(earnings))+" companies")

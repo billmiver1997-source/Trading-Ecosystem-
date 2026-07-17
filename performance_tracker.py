@@ -216,11 +216,17 @@ def send_result_photo(photo_path, caption, reply_to_message_id=None):
 _YF_EXECUTOR = ThreadPoolExecutor(max_workers=4)
 
 
-def get_price(symbol):
+def _fetch_price_data(symbol):
+    """Return the latest 1m bar's close/high/low so TP/SL checks use intra-bar
+    extremes (matching backtest logic) rather than only the close price."""
     try:
         df = _YF_EXECUTOR.submit(yf.Ticker(symbol).history, period="1d", interval="1m").result(timeout=20)
         if len(df) > 0:
-            return float(df["Close"].iloc[-1])
+            return {
+                "close": float(df["Close"].iloc[-1]),
+                "high":  float(df["High"].iloc[-1]),
+                "low":   float(df["Low"].iloc[-1]),
+            }
     except Exception as e:
         print(f"get_price error {symbol}: {e}")
     return None
@@ -233,7 +239,7 @@ def check_trades():
     for trade in snapshot:
         symbol = SYMBOLS.get(trade.get("name", ""))
         if symbol and symbol not in price_cache:
-            price_cache[symbol] = get_price(symbol)
+            price_cache[symbol] = _fetch_price_data(symbol)
 
     lock_path = TRADES_FILE + '.lock'
     with open(lock_path, 'a') as _lf:
@@ -260,10 +266,15 @@ def _check_trades_inner(price_cache):
             remaining.append(trade)
             continue
 
-        price = price_cache.get(symbol)
-        if price is None:
+        price_data = price_cache.get(symbol)
+        if price_data is None:
             remaining.append(trade)
             continue
+
+        # Use bar high/low for TP/SL detection (matches backtest logic — close-only misses wicks)
+        close_px = price_data["close"]
+        bar_high  = price_data["high"]
+        bar_low   = price_data["low"]
 
         entry = trade["entry"]
         sl = trade["sl"]
@@ -272,15 +283,15 @@ def _check_trades_inner(price_cache):
         emoji = PAIR_EMOJIS.get(name, "")
         now = datetime.now(tz).strftime("%d/%m/%Y %H:%M")
 
-        tp_hit = (signal == "BUY" and price >= tp) or (signal == "SELL" and price <= tp)
-        sl_hit = (signal == "BUY" and price <= sl) or (signal == "SELL" and price >= sl)
+        tp_hit = (signal == "BUY" and bar_high >= tp) or (signal == "SELL" and bar_low <= tp)
+        sl_hit = (signal == "BUY" and bar_low <= sl) or (signal == "SELL" and bar_high >= sl)
 
-        # Trailing SL: move to breakeven when price covers 50% to TP
+        # Trailing SL: move to breakeven when close covers 50% of the move to TP
         if not tp_hit and not sl_hit:
             half_move = abs(tp - entry) * 0.5
             sig_msg_id = trade.get("signal_message_id")
             # Use 1e-5 epsilon: round(x,5) can differ from x by up to 5e-6, so 1e-6 is too tight
-            if signal == "BUY" and price >= entry + half_move and sl < entry - 1e-5:
+            if signal == "BUY" and close_px >= entry + half_move and sl < entry - 1e-5:
                 trade["sl"] = round(entry, 5)
                 open_mins = int((time.time() - trade.get("time", time.time())) / 60)
                 dur = f"{open_mins//60}h {open_mins%60}min" if open_mins >= 60 else f"{open_mins}min"
@@ -297,7 +308,7 @@ def _check_trades_inner(price_cache):
                     print(f"BE chart error {name}: {chart_err}")
                     photo_path = None
                 send_result_photo(photo_path, be_msg, sig_msg_id)
-            elif signal == "SELL" and price <= entry - half_move and sl > entry + 1e-5:
+            elif signal == "SELL" and close_px <= entry - half_move and sl > entry + 1e-5:
                 trade["sl"] = round(entry, 5)
                 open_mins = int((time.time() - trade.get("time", time.time())) / 60)
                 dur = f"{open_mins//60}h {open_mins%60}min" if open_mins >= 60 else f"{open_mins}min"
