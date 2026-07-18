@@ -450,7 +450,7 @@ def send_daily_stats():
     stats = load_stats()
     total = stats["wins"] + stats["losses"]
     if total == 0:
-        return
+        return True  # nothing to send; signal caller to mark day done so we don't retry all window
     winrate = round((stats["wins"] / total) * 100, 1)
     tz = pytz.timezone("Europe/Athens")
     now = datetime.now(tz).strftime("%d/%m/%Y")
