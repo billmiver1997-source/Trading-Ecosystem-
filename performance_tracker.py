@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 load_dotenv("/root/tradingbot/.env")
 
 import fcntl
+import traceback
 import yfinance as yf
 import requests
 import json
@@ -110,13 +111,19 @@ def load_stats():
     return default
 
 def save_stats(stats):
+    lock_path = STATS_FILE + ".lock"
     tmp = STATS_FILE + '.tmp'
     try:
-        with open(tmp, 'w') as f:
-            json.dump(stats, f)
-            f.flush()
-            os.fsync(f.fileno())  # ensure bytes reach disk before atomic rename
-        os.replace(tmp, STATS_FILE)
+        with open(lock_path, "a") as _lf:
+            fcntl.flock(_lf, fcntl.LOCK_EX)
+            try:
+                with open(tmp, 'w') as f:
+                    json.dump(stats, f)
+                    f.flush()
+                    os.fsync(f.fileno())
+                os.replace(tmp, STATS_FILE)
+            finally:
+                fcntl.flock(_lf, fcntl.LOCK_UN)
     except Exception as e:
         print(f"save_stats error: {e}")
 
@@ -285,6 +292,12 @@ def _check_trades_inner(price_cache):
 
         tp_hit = (signal == "BUY" and bar_high >= tp) or (signal == "SELL" and bar_low <= tp)
         sl_hit = (signal == "BUY" and bar_low <= sl) or (signal == "SELL" and bar_high >= sl)
+
+        if tp_hit and sl_hit:
+            # Both levels touched in the same 1m bar — can't determine which was hit first.
+            # Skip this bar (leave trade open) rather than always crediting a WIN.
+            remaining.append(trade)
+            continue
 
         # Trailing SL: move to breakeven when close covers 50% of the move to TP
         if not tp_hit and not sl_hit:
@@ -478,7 +491,6 @@ def main():
                     last_stats_day = today
                     _save_sent_day(today)
         except Exception as e:
-            import traceback
             traceback.print_exc()
         time.sleep(60)
 

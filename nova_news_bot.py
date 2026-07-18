@@ -30,7 +30,6 @@ MAIN_MENU = ReplyKeyboardMarkup([
 ], resize_keyboard=True)
 
 KEYWORDS = {
-    "ukraine": ["ukraine","zelensky","kyiv","kharkiv","donbas","russia ukraine","war ukraine","ceasefire ukraine","zelenskyy","ukraine war","nato ukraine"],
     "finance": ["fed","rate","inflation","gdp","central bank","ecb","boe","interest rate","recession","bond","yield","dollar","forex","currency","gold","oil","crypto","bitcoin","market rally","market crash","stock"],
     "geopolitics": ["trump","election","nato","sanctions","iran","israel","china","taiwan","russia","war","attack","missile","nuclear","coup","president","government","diplomacy","treaty"],
     "markets": ["trade","tariff","import","export","supply chain","commodity","wto","imf","world bank","gdp growth","economic growth","manufacturing","retail","consumer","employment","jobs"]

@@ -370,7 +370,9 @@ def main():
                                 sent_today[send_key] = True
                                 _save_sent_slots(sent_today)
                             else:
-                                print(f"Fallback send FAILED for {send_key} — slot not marked, will retry if window allows")
+                                print(f"Fallback send FAILED for {send_key} — will retry within window")
+                                time.sleep(60)
+                                continue
                         else:
                             sent_today[send_key] = True  # nothing to send, mark used
                             _save_sent_slots(sent_today)

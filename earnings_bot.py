@@ -171,7 +171,13 @@ def main():
                     analysis = get_analysis(earnings)
                     _day_msg_cache = {today: (format_message(earnings, analysis), len(earnings))}
                 msg, earnings_count = _day_msg_cache[today]
-                if send_all(msg) > 0:
+                users = load_users()
+                if not users:
+                    sent_today = today
+                    _save_sent_day(today)
+                    print("No users registered — skipping earnings broadcast")
+                    time.sleep(600)
+                elif send_all(msg) > 0:
                     sent_today = today
                     _save_sent_day(today)
                     print("Earnings sent! "+str(earnings_count)+" companies")

@@ -368,7 +368,13 @@ def add_trade(name, setup, signal_message_id=None):
 
 
 def circuit_breaker_tripped(name):
-    stats = _load_json("/root/tradingbot/trade_stats.json", {})
+    lock_path = "/root/tradingbot/trade_stats.json.lock"
+    with open(lock_path, "a") as _lf:
+        fcntl.flock(_lf, fcntl.LOCK_SH)
+        try:
+            stats = _load_json("/root/tradingbot/trade_stats.json", {})
+        finally:
+            fcntl.flock(_lf, fcntl.LOCK_UN)
     pair_s = stats.get("by_pair", {}).get(name, {})
     total = pair_s.get("wins", 0) + pair_s.get("losses", 0)
     if total < CIRCUIT_BREAKER_MIN_TRADES:
