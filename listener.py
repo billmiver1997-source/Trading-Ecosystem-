@@ -114,6 +114,10 @@ def save_users(users):
         os.replace(tmp, USERS_FILE)
     except Exception as e:
         print(f"save_users error: {e}")
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
 
 def load_profiles():
     if os.path.exists(PROFILES_FILE):
@@ -146,6 +150,10 @@ def save_profile(user_id, username, first_name):
                     os.replace(tmp, PROFILES_FILE)
                 except Exception as e:
                     print(f"save_profile error: {e}")
+                    try:
+                        os.unlink(tmp)
+                    except OSError:
+                        pass
         finally:
             fcntl.flock(_lf, fcntl.LOCK_UN)
 
@@ -321,14 +329,20 @@ def _prewarm_analysis_cache():
     Pairs are fetched in parallel (up to 6 at once) to cut cold-start time from
     ~170 s (serial) to ~30 s (parallel)."""
     while True:
-        pairs = [p for p in SYMBOLS if p != "DXY"]
-        with ThreadPoolExecutor(max_workers=6) as ex:
-            futures = {ex.submit(get_analysis, p): p for p in pairs}
-            for fut in futures:
-                try:
-                    fut.result()
-                except Exception as e:
-                    print(f"prewarm_analysis error ({futures[fut]}): {e}")
+        try:
+            pairs = [p for p in SYMBOLS if p != "DXY"]
+            with ThreadPoolExecutor(max_workers=6) as ex:
+                futures = {ex.submit(get_analysis, p): p for p in pairs}
+                for fut in futures:
+                    try:
+                        fut.result()
+                    except Exception as e:
+                        print(f"prewarm_analysis error ({futures[fut]}): {e}")
+        except Exception as e:
+            # Catch executor-level failures (e.g. OS thread limit) so the daemon
+            # thread stays alive and resumes on the next 5-min tick rather than
+            # silently dying and leaving the cache permanently stale.
+            print(f"prewarm_analysis outer error: {e}")
         time.sleep(300)  # 5 min — well under the 15-min TTL, keeps the staleness window small
 
 def _fetch_analysis(pair_name):
@@ -433,13 +447,13 @@ def get_status():
         try:
             with open(trades_file) as f:
                 trades = json.load(f)
-        except (json.JSONDecodeError, ValueError) as e:
+        except (json.JSONDecodeError, ValueError, OSError) as e:
             print(f"get_status trades JSON error: {e}")
     if os.path.exists(stats_file):
         try:
             with open(stats_file) as f:
                 stats = json.load(f)
-        except (json.JSONDecodeError, ValueError) as e:
+        except (json.JSONDecodeError, ValueError, OSError) as e:
             print(f"get_status stats JSON error: {e}")
     total = stats.get("wins",0)+stats.get("losses",0)
     wr = round((stats.get("wins",0)/total)*100,1) if total > 0 else 0

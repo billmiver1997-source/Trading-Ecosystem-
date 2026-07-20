@@ -343,8 +343,12 @@ def main():
                 time.sleep(min(_secs, 1800))
                 continue
 
-            # Prune stale keys from previous days to prevent indefinite growth
-            sent_today = {k: v for k, v in sent_today.items() if k.startswith(today)}
+            # Prune stale keys from previous days to prevent indefinite growth;
+            # persist immediately so orphaned keys don't re-accumulate across restarts.
+            pruned = {k: v for k, v in sent_today.items() if k.startswith(today)}
+            if len(pruned) < len(sent_today):
+                sent_today = pruned
+                _save_sent_slots(sent_today)
 
             # Check schedule
             send_key = today+"_"+str(hour)
