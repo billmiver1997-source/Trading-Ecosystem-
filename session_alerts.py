@@ -185,8 +185,6 @@ def main():
             if len(pruned) != len(sent):
                 sent = pruned
                 _save_sent_state(sent)
-            else:
-                sent = pruned
 
             for s in SESSIONS:
                 oh, om = s["open"]

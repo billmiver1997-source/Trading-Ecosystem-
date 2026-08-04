@@ -121,6 +121,10 @@ def save_users(users):
         os.replace(tmp, USERS_FILE)
     except Exception as e:
         print(f"save_users error: {e}")
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
 
 def load_profiles():
     if os.path.exists(PROFILES_FILE):
@@ -153,6 +157,10 @@ def save_profile(user_id, username, first_name):
                     os.replace(tmp, PROFILES_FILE)
                 except Exception as e:
                     print(f"save_profile error: {e}")
+                    try:
+                        os.unlink(tmp)
+                    except OSError:
+                        pass
         finally:
             fcntl.flock(_lf, fcntl.LOCK_UN)
 
@@ -327,13 +335,19 @@ def _prewarm_analysis_cache():
     the dominant driver of Anthropic spend) — cut to 5 pairs on a 15-min tick
     (~480 calls/day) after the account ran out of credit."""
     while True:
-        with ThreadPoolExecutor(max_workers=5) as ex:
-            futures = {ex.submit(get_analysis, p): p for p in ANALYSIS_PAIRS}
-            for fut in futures:
-                try:
-                    fut.result()
-                except Exception as e:
-                    print(f"prewarm_analysis error ({futures[fut]}): {e}")
+        try:
+            with ThreadPoolExecutor(max_workers=5) as ex:
+                futures = {ex.submit(get_analysis, p): p for p in ANALYSIS_PAIRS}
+                for fut in futures:
+                    try:
+                        fut.result()
+                    except Exception as e:
+                        print(f"prewarm_analysis error ({futures[fut]}): {e}")
+        except Exception as e:
+            # Catch executor-level failures (e.g. OS thread limit) so the daemon
+            # thread stays alive and resumes on the next tick rather than
+            # silently dying and leaving the cache permanently stale.
+            print(f"prewarm_analysis outer error: {e}")
         time.sleep(900)  # 15 min — matches the TTL, was 5 min
 
 def _fetch_analysis(pair_name):
@@ -438,13 +452,13 @@ def get_status():
         try:
             with open(trades_file) as f:
                 trades = json.load(f)
-        except (json.JSONDecodeError, ValueError) as e:
+        except (json.JSONDecodeError, ValueError, OSError) as e:
             print(f"get_status trades JSON error: {e}")
     if os.path.exists(stats_file):
         try:
             with open(stats_file) as f:
                 stats = json.load(f)
-        except (json.JSONDecodeError, ValueError) as e:
+        except (json.JSONDecodeError, ValueError, OSError) as e:
             print(f"get_status stats JSON error: {e}")
     total = stats.get("wins",0)+stats.get("losses",0)
     wr = round((stats.get("wins",0)/total)*100,1) if total > 0 else 0
@@ -725,6 +739,8 @@ def handle_message(chat_id, text, username, first_name=""):
             else:
                 pip_value = 10  # Standard forex: $10/pip/lot
             lots = round(risk_amount / (sl_pips * pip_value), 2)
+            if lots <= 0:
+                lots = 0.01
             msg = "🧮 RISK CALCULATOR\n\nBalance: $"+str(balance)+"\nRisk: "+str(risk_pct)+"% = $"+str(round(risk_amount,2))+"\nSL: "+str(sl_pips)+" pips\nPair: "+pair+"\n\n🎯 Recommended Lots: "+str(lots)+"\n\nRisk/Reward 1:2\nTP = "+str(sl_pips*2)+" pips"
             send_message(chat_id, msg, main_menu())
         except Exception as e:
@@ -793,16 +809,16 @@ def handle_message(chat_id, text, username, first_name=""):
                         df = _yf_history(symbol, period=period, interval=tf)
                         if len(df) < 50: return tf, None, None
                         close = df["Close"]
-                        ema20 = close.ewm(span=20).mean().iloc[-1]
-                        ema50 = close.ewm(span=50).mean().iloc[-1]
+                        ema20 = close.ewm(span=20, adjust=False).mean().iloc[-1]
+                        ema50 = close.ewm(span=50, adjust=False).mean().iloc[-1]
                         delta = close.diff()
                         gain = delta.clip(lower=0).ewm(com=13, adjust=False).mean()
                         loss_s = (-delta.clip(upper=0)).ewm(com=13, adjust=False).mean()
                         loss_s = loss_s.replace(0, 1e-10)
                         rsi = (100-(100/(1+gain/loss_s))).iloc[-1]
-                        macd_line = close.ewm(span=12).mean()-close.ewm(span=26).mean()
+                        macd_line = close.ewm(span=12, adjust=False).mean()-close.ewm(span=26, adjust=False).mean()
                         macd_v = macd_line.iloc[-1]
-                        macd_sig = macd_line.ewm(span=9).mean().iloc[-1]
+                        macd_sig = macd_line.ewm(span=9, adjust=False).mean().iloc[-1]
                         if ema20 > ema50 and macd_v > macd_sig and rsi > 50:
                             bias = "BULLISH 🟢"
                         elif ema20 < ema50 and macd_v < macd_sig and rsi < 50:
@@ -841,6 +857,7 @@ def handle_message(chat_id, text, username, first_name=""):
             send_message(chat_id, "📊 MTF analysis temporarily unavailable.", main_menu())
 
     elif text_lower in ["💼 portfolio", "/portfolio"]:
+        send_typing(chat_id)
         try:
             trades_file = "/root/tradingbot/open_trades.json"
             trades = []
@@ -1219,7 +1236,7 @@ def handle_message(chat_id, text, username, first_name=""):
                 else:
                     pair = pair_key  # legacy format — no suffix
                     sig = ""
-                sig_emoji = "🟢" if sig == "BUY" else "🔴"
+                sig_emoji = "🟢" if sig == "BUY" else ("🔴" if sig == "SELL" else "⚪")
                 time_str = datetime.fromtimestamp(t, tz=tz_athens).strftime("%d/%m %H:%M") if t else ""
                 lines_h.append(sig_emoji+" "+pair+" "+sig+" | "+time_str)
             send_message(chat_id, "\n".join(lines_h), main_menu())
@@ -1259,7 +1276,7 @@ def handle_message(chat_id, text, username, first_name=""):
                 data = sr_results.get(name)
                 if not data: continue
                 lines_sr.append("\n"+name+" | "+str(data["price"]))
-                lines_sr.append("🔴 R2: "+str(data["r2"])+" | R1: "+str(data["r1"]))
+                lines_sr.append("🔴 R1: "+str(data["r1"])+" | R2: "+str(data["r2"]))
                 lines_sr.append("🟢 S1: "+str(data["s1"])+" | S2: "+str(data["s2"]))
             send_message(chat_id, "\n".join(lines_sr), main_menu())
         except Exception as e:

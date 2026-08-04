@@ -178,7 +178,7 @@ def get_market_overview():
     for name, symbol in pairs.items():
         try:
             df = _YF_EXECUTOR.submit(yf.Ticker(symbol).history, period="5d", interval="1h").result(timeout=20)
-            if len(df) < 25:  # need at least 24 bars back for the 24h change
+            if len(df) < 25:  # need at least 25 bars: iloc[-25] requires len >= 25
                 continue
             price = df["Close"].iloc[-1]
             change = ((df["Close"].iloc[-1] - df["Close"].iloc[-25]) / df["Close"].iloc[-25]) * 100

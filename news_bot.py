@@ -343,8 +343,12 @@ def main():
                 time.sleep(min(_secs, 1800))
                 continue
 
-            # Prune stale keys from previous days to prevent indefinite growth
-            sent_today = {k: v for k, v in sent_today.items() if k.startswith(today)}
+            # Prune stale keys from previous days to prevent indefinite growth;
+            # persist immediately so orphaned keys don't re-accumulate across restarts.
+            pruned = {k: v for k, v in sent_today.items() if k.startswith(today)}
+            if len(pruned) < len(sent_today):
+                sent_today = pruned
+                _save_sent_slots(sent_today)
 
             # Check schedule
             send_key = today+"_"+str(hour)
@@ -370,7 +374,9 @@ def main():
                                 sent_today[send_key] = True
                                 _save_sent_slots(sent_today)
                             else:
-                                print(f"Fallback send FAILED for {send_key} — slot not marked, will retry if window allows")
+                                print(f"Fallback send FAILED for {send_key} — will retry within window")
+                                time.sleep(60)
+                                continue
                         else:
                             sent_today[send_key] = True  # nothing to send, mark used
                             _save_sent_slots(sent_today)
