@@ -70,6 +70,13 @@ SYMBOLS = {
     "USD/JPY": "USDJPY=X",
 }
 
+# AI Analysis is deliberately limited to these 5 (of the 15 SYMBOLS above) —
+# the AI-analysis feature is the one paid Anthropic cost in this bot, and the
+# background prewarm loop below was calling it for all 15 pairs continuously
+# (~1400 calls/day) even for pairs nobody asked about. Portfolio/S&R/MTF/etc.
+# still use the full SYMBOLS dict — this restriction is Analysis-only.
+ANALYSIS_PAIRS = ["EUR/USD", "XAU/USD", "Oil/USD", "USD/JPY", "USD/CHF"]
+
 ALIASES = {
     "eurusd": "EUR/USD", "gbpusd": "GBP/USD", "xauusd": "XAU/USD",
     "gold": "XAU/USD", "btc": "BTC/USD", "bitcoin": "BTC/USD",
@@ -236,15 +243,13 @@ def main_menu():
         "input_field_placeholder": "Choose an option..."
     }
 def pairs_menu():
+    # Analysis is limited to ANALYSIS_PAIRS (see definition near SYMBOLS) — this
+    # keyboard only shows those 5, so users can't pick a pair that isn't supported.
     return {
         "keyboard": [
-            [{"text": "\U0001f1ea\U0001f1fa EUR/USD"}, {"text": "\U0001f1ec\U0001f1e7 GBP/USD"}],
-            [{"text": "\U0001fa99 XAU/USD"}, {"text": "\U0001f7e1 BTC/USD"}],
-            [{"text": "\U0001f535 SOL/USD"}, {"text": "\u26fd Oil/USD"}],
-            [{"text": "\U0001f1fa\U0001f1f8 USD/CHF"}, {"text": "\U0001f1e6\U0001f1fa AUD/USD"}],
-            [{"text": "\U0001f1e8\U0001f1e6 USD/CAD"}, {"text": "🥈 Silver/USD"}],
-            [{"text": "🟠 Copper/USD"}, {"text": "🇯🇵 USD/JPY"}],
-            [{"text": "🇳🇿 NZD/USD"}],
+            [{"text": "\U0001f1ea\U0001f1fa EUR/USD"}, {"text": "\U0001fa99 XAU/USD"}],
+            [{"text": "\u26fd Oil/USD"}, {"text": "\U0001f1ef\U0001f1f5 USD/JPY"}],
+            [{"text": "\U0001f1fa\U0001f1f8 USD/CHF"}],
             [{"text": "\U0001f519 Back to Menu"}],
         ],
         "resize_keyboard": True,
@@ -313,23 +318,23 @@ def _get_analysis_with_typing(chat_id, pair_name):
         stop_flag.set()
 
 def _prewarm_analysis_cache():
-    """Proactively refreshes the analysis cache for every known pair so a live
-    request almost always resolves from cache (near-instant) instead of
-    triggering a fresh ~6-13s data-fetch + AI call. get_analysis() already
-    skips the actual work when the cache is still fresh, so most ticks here
-    are cheap no-ops — real work happens roughly once per pair per TTL window.
-    Pairs are fetched in parallel (up to 6 at once) to cut cold-start time from
-    ~170 s (serial) to ~30 s (parallel)."""
+    """Proactively refreshes the analysis cache for ANALYSIS_PAIRS only (not all
+    15 SYMBOLS) so a live request almost always resolves from cache (near-instant)
+    instead of triggering a fresh ~6-13s data-fetch + AI call. get_analysis()
+    already skips the actual work when the cache is still fresh, so most ticks
+    here are cheap no-ops — real work happens roughly once per pair per TTL
+    window. Was previously all 15 pairs on a 5-min tick (~1400 AI calls/day,
+    the dominant driver of Anthropic spend) — cut to 5 pairs on a 15-min tick
+    (~480 calls/day) after the account ran out of credit."""
     while True:
-        pairs = [p for p in SYMBOLS if p != "DXY"]
-        with ThreadPoolExecutor(max_workers=6) as ex:
-            futures = {ex.submit(get_analysis, p): p for p in pairs}
+        with ThreadPoolExecutor(max_workers=5) as ex:
+            futures = {ex.submit(get_analysis, p): p for p in ANALYSIS_PAIRS}
             for fut in futures:
                 try:
                     fut.result()
                 except Exception as e:
                     print(f"prewarm_analysis error ({futures[fut]}): {e}")
-        time.sleep(300)  # 5 min — well under the 15-min TTL, keeps the staleness window small
+        time.sleep(900)  # 15 min — matches the TTL, was 5 min
 
 def _fetch_analysis(pair_name):
     symbol = SYMBOLS.get(pair_name)
@@ -649,24 +654,33 @@ def handle_message(chat_id, text, username, first_name=""):
     elif text_lower.startswith("/analysis "):
         pair_input = text_lower[len("/analysis "):].strip()
         pair_name = ALIASES.get(pair_input) or next((k for k in SYMBOLS if k.lower() == pair_input), pair_input.upper())
-        if not _is_analysis_cached(pair_name):
-            send_message(chat_id, "🔎 Analyzing " + pair_name + " — pulling live data, one moment...")
-        send_message(chat_id, _get_analysis_with_typing(chat_id, pair_name), main_menu())
+        if pair_name not in ANALYSIS_PAIRS:
+            send_message(chat_id, "📊 Analysis is available for: " + ", ".join(ANALYSIS_PAIRS), pairs_menu())
+        else:
+            if not _is_analysis_cached(pair_name):
+                send_message(chat_id, "🔎 Analyzing " + pair_name + " — pulling live data, one moment...")
+            send_message(chat_id, _get_analysis_with_typing(chat_id, pair_name), main_menu())
 
     elif any(text_lower.replace(" ","").replace("/","") == k.replace(" ","").replace("/","") for k in ALIASES.keys()):
         normalized = text_lower.replace(" ","").replace("/","")
         # Find the original key whose normalized form matches, then look up the pair
         key = next(k for k in ALIASES.keys() if k.replace(" ","").replace("/","") == normalized)
         pair_name = ALIASES.get(key, normalized.upper())
-        if not _is_analysis_cached(pair_name):
-            send_message(chat_id, "🔎 Analyzing " + pair_name + " — pulling live data, one moment...")
-        send_message(chat_id, _get_analysis_with_typing(chat_id, pair_name), main_menu())
+        if pair_name not in ANALYSIS_PAIRS:
+            send_message(chat_id, "📊 Analysis is available for: " + ", ".join(ANALYSIS_PAIRS), pairs_menu())
+        else:
+            if not _is_analysis_cached(pair_name):
+                send_message(chat_id, "🔎 Analyzing " + pair_name + " — pulling live data, one moment...")
+            send_message(chat_id, _get_analysis_with_typing(chat_id, pair_name), main_menu())
 
     elif any(emoji in text for emoji in ["🇪🇺","🇬🇧","🪙","🟡","🔵","⛽","🇺🇸","🇦🇺","🥈","🟠","🇯🇵","🇳🇿","🇨🇦"]):
         for k, v in ALIASES.items():
             # Use word-boundary matching to prevent short keys like "eur", "sol", "oil"
             # from matching substrings of unrelated words (e.g. "sol" in "absolute").
             if re.search(r'\b' + re.escape(k) + r'\b', text_lower) or re.search(r'\b' + re.escape(v.lower()) + r'\b', text_lower):
+                if v not in ANALYSIS_PAIRS:
+                    send_message(chat_id, "📊 Analysis is available for: " + ", ".join(ANALYSIS_PAIRS), pairs_menu())
+                    return
                 if not _is_analysis_cached(v):
                     send_message(chat_id, "🔎 Analyzing " + v + " — pulling live data, one moment...")
                 send_message(chat_id, _get_analysis_with_typing(chat_id, v), main_menu())
