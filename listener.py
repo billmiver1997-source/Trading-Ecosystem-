@@ -325,31 +325,6 @@ def _get_analysis_with_typing(chat_id, pair_name):
     finally:
         stop_flag.set()
 
-def _prewarm_analysis_cache():
-    """Proactively refreshes the analysis cache for ANALYSIS_PAIRS only (not all
-    15 SYMBOLS) so a live request almost always resolves from cache (near-instant)
-    instead of triggering a fresh ~6-13s data-fetch + AI call. get_analysis()
-    already skips the actual work when the cache is still fresh, so most ticks
-    here are cheap no-ops — real work happens roughly once per pair per TTL
-    window. Was previously all 15 pairs on a 5-min tick (~1400 AI calls/day,
-    the dominant driver of Anthropic spend) — cut to 5 pairs on a 15-min tick
-    (~480 calls/day) after the account ran out of credit."""
-    while True:
-        try:
-            with ThreadPoolExecutor(max_workers=5) as ex:
-                futures = {ex.submit(get_analysis, p): p for p in ANALYSIS_PAIRS}
-                for fut in futures:
-                    try:
-                        fut.result()
-                    except Exception as e:
-                        print(f"prewarm_analysis error ({futures[fut]}): {e}")
-        except Exception as e:
-            # Catch executor-level failures (e.g. OS thread limit) so the daemon
-            # thread stays alive and resumes on the next tick rather than
-            # silently dying and leaving the cache permanently stale.
-            print(f"prewarm_analysis outer error: {e}")
-        time.sleep(900)  # 15 min — matches the TTL, was 5 min
-
 def _fetch_analysis(pair_name):
     symbol = SYMBOLS.get(pair_name)
     if not symbol:
@@ -1382,7 +1357,10 @@ def _ensure_keyboard(chat_id):
 
 def main():
     set_commands()
-    threading.Thread(target=_prewarm_analysis_cache, daemon=True).start()
+    # No background prewarm — Analysis is purely on-demand now (the prewarm loop
+    # was ~480 AI calls/day running 24/7 regardless of usage, the dominant driver
+    # of Anthropic credit burn). A cache-miss now just shows "🔎 Analyzing..." +
+    # a live typing indicator instead of costing money in the background.
     offset = None
     print("Listener started...")
     while True:
